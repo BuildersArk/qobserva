@@ -1,0 +1,207 @@
+QOBSERVA COMMUNITY LICENSE
+
+Version 1.0 – March 2026
+Copyright (c) 2026 BuildersArk LLC
+
+This license governs the use of the QObserva software project and its
+associated components.
+
+This is a source-available license intended to allow individuals,
+researchers, and organizations to use, study, and evaluate QObserva
+while reserving certain commercial rights for BuildersArk LLC.
+
+This license is NOT an OSI-approved open source license.
+
+------------------------------------------------------------------------
+
+1. Definitions
+
+1.1 "Licensor"
+"Licensor" means BuildersArk LLC.
+
+1.2 "Software"
+"Software" means the QObserva codebase and all related packages
+contained within this repository including, but not limited to:
+  - qobserva
+  - qobserva-agent
+  - qobserva-collector
+  - qobserva-local
+  - documentation and configuration files.
+
+1.3 "You" / "Your"
+"You" means an individual or legal entity exercising permissions granted
+under this License.
+
+1.4 "Hosted Service"
+"Hosted Service" means making the Software or any substantial portion of
+its functionality available to third parties over a network including
+but not limited to:
+  - Software-as-a-Service (SaaS)
+  - cloud hosted platforms
+  - managed services
+  - remote monitoring or analytics platforms.
+
+1.5 "Competing Service"
+A Hosted Service that provides quantum observability, telemetry,
+monitoring, analytics, benchmarking, or other functionality materially
+similar to QObserva.
+
+1.6 "Derivative Work"
+Any modification, enhancement, translation, adaptation, or work based
+upon the Software.
+
+------------------------------------------------------------------------
+
+2. Grant of Rights
+
+Subject to compliance with this License, Licensor grants You a
+worldwide, non-exclusive, non-transferable, royalty-free license to:
+
+2.1 Use
+Use the Software internally within Your organization for research,
+development, testing, evaluation, and production use.
+
+2.2 Modify
+Modify the Software and create Derivative Works for internal use.
+
+2.3 Redistribute Unmodified Copies
+Distribute unmodified copies of the Software provided that:
+  - this License is included in full
+  - all copyright notices remain intact
+  - no attribution notices are removed.
+
+2.4 Community Contributions
+Submit improvements, bug fixes, or enhancements to the official QObserva
+repository maintained by BuildersArk LLC.
+
+------------------------------------------------------------------------
+
+3. Restrictions
+
+Without a separate written commercial license from BuildersArk LLC, You
+may NOT:
+
+3.1 Provide as a Hosted Service
+Offer the Software or any Derivative Work as a Hosted Service where the
+primary value derives from the Software's functionality.
+
+3.2 Operate a Competing Service
+Operate or provide a Competing Service using the Software.
+
+3.3 Distribute Modified Versions
+Distribute Derivative Works or modified versions of the Software to
+third parties except when contributing them back to the official
+repository.
+
+3.4 Remove Notices
+Remove, obscure, or alter copyright notices, license notices, or
+attribution statements contained in the Software.
+
+3.5 Misrepresent Origin
+Misrepresent the origin of the Software. If modifications are
+distributed via contributions, they must clearly indicate that they are
+modifications.
+
+3.6 Trademark Usage
+Use the names QObserva, BuildersArk, or related trademarks, logos, or
+branding without written permission from the Licensor.
+
+Nothing in this License grants rights to Licensor trademarks except for
+factual statements such as: "Powered by QObserva".
+
+------------------------------------------------------------------------
+
+4. Third-Party Components
+
+The Software may include or depend on third-party components licensed
+under separate open source or proprietary licenses.
+
+Those licenses apply independently of this License. Nothing in this
+License overrides the terms of third-party licenses.
+
+------------------------------------------------------------------------
+
+5. No Warranty
+
+THE SOFTWARE IS PROVIDED "AS IS" AND "AS AVAILABLE", WITHOUT
+WARRANTY OF ANY KIND.
+
+LICENSOR DISCLAIMS ALL WARRANTIES INCLUDING BUT NOT LIMITED TO:
+  - MERCHANTABILITY
+  - FITNESS FOR A PARTICULAR PURPOSE
+  - NON-INFRINGEMENT.
+
+YOU ASSUME ALL RISKS ASSOCIATED WITH USE OF THE SOFTWARE.
+
+------------------------------------------------------------------------
+
+6. Limitation of Liability
+
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, LICENSOR SHALL NOT BE LIABLE FOR
+ANY DAMAGES ARISING FROM THE USE OR INABILITY TO USE THE SOFTWARE
+INCLUDING BUT NOT LIMITED TO:
+  - DIRECT DAMAGES
+  - INDIRECT DAMAGES
+  - INCIDENTAL DAMAGES
+  - SPECIAL DAMAGES
+  - CONSEQUENTIAL DAMAGES.
+
+------------------------------------------------------------------------
+
+7. Termination
+
+7.1 Breach
+This License terminates automatically if You materially breach its
+terms.
+
+7.2 Cure Period
+Licensor may provide written notice of breach and allow thirty (30) days
+to cure the violation.
+
+7.3 Effect of Termination
+Upon termination You must:
+  - immediately cease use of the Software
+  - destroy all copies of the Software in Your possession.
+
+Sections relating to restrictions, disclaimers, and liability survive
+termination.
+
+------------------------------------------------------------------------
+
+8. Commercial Licensing
+
+Organizations wishing to:
+  - operate QObserva as a Hosted Service
+  - distribute modified versions commercially
+  - build commercial products or services based on QObserva
+
+must obtain a separate commercial license from BuildersArk LLC.
+
+For commercial licensing inquiries contact:
+
+  support@qobserva.com
+
+------------------------------------------------------------------------
+
+9. Contributions
+
+Unless otherwise agreed in writing, any contribution intentionally
+submitted to the QObserva project grants BuildersArk LLC a perpetual,
+worldwide, royalty-free license to use, modify, distribute, sublicense,
+and commercialize such contributions as part of the QObserva project.
+
+------------------------------------------------------------------------
+
+10. Governing Law
+
+This License shall be governed by and construed in accordance with the
+laws of the State of Texas, United States, without regard to
+conflict-of-law principles.
+
+------------------------------------------------------------------------
+
+11. Future Licensing
+
+BuildersArk LLC reserves the right to offer the Software under different
+licensing terms, including commercial licenses or alternative community
+licenses, in the future.

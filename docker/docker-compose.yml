@@ -1,0 +1,36 @@
+services:
+  collector:
+    build:
+      context: ..
+      dockerfile: docker/collector.Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - QOBSERVA_DATA_DIR=/data
+    volumes:
+      - qobserva_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  ui:
+    build:
+      context: ..
+      dockerfile: docker/ui.Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_API_URL=http://collector:8080
+    depends_on:
+      collector:
+        condition: service_healthy
+    volumes:
+      - ../packages/qobserva_ui_react:/app
+      - ui_node_modules:/app/node_modules
+
+volumes:
+  qobserva_data:
+  ui_node_modules:

@@ -1,0 +1,37 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-dark-bg text-dark-text font-sans;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-dark-surface border border-dark-border rounded-lg p-6;
+  }
+  
+  .metric-card {
+    @apply bg-dark-surface border border-dark-border rounded-lg p-6 hover:border-primary/50 transition-colors;
+  }
+  
+  .btn-primary {
+    @apply bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded-lg font-medium transition-colors;
+  }
+  
+  .btn-secondary {
+    @apply bg-dark-surface border border-dark-border hover:border-primary/50 text-dark-text px-4 py-2 rounded-lg font-medium transition-colors;
+  }
+}
+
+/* Improve native date input calendar icon visibility on dark backgrounds (Chrome/Edge/Safari) */
+.qobserva-date-input::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  opacity: 0.9;
+  cursor: pointer;
+}
+.qobserva-date-input::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}

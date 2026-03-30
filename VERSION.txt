@@ -1,0 +1,2 @@
+qobserva-contract-pack: v0.2
+schema_version: 0.1.0
