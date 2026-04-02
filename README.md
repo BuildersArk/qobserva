@@ -2,7 +2,13 @@
 
 Quantum program observability and benchmarking. Local-first observability for quantum computing.
 
-> ⚠️ **Beta:** QObserva is currently in beta. APIs may change.
+Think: **Datadog / Prometheus - but for quantum computing SDKs.**
+
+## Demo
+
+![QObserva dashboard demo](docs/video/demo.gif)
+
+
 
 ## Quick Start
 
@@ -66,6 +72,14 @@ qobserva down
 ## What is QObserva?
 
 QObserva provides standardized telemetry, metrics, and visualizations for quantum program executions across all major Python quantum SDKs.
+
+## Use Cases
+
+- **Cross-SDK benchmarking**: Compare algorithm behavior across Qiskit, Braket, Cirq, PennyLane, pyQuil, and D-Wave.
+- **Experiment observability**: Track run status, shots, runtimes, and quality metrics over time.
+- **Regression detection**: Catch performance or success-rate regressions across code changes.
+- **Team reporting**: Use dashboard views and generated reports to share outcomes with researchers and engineering teams.
+- **Backend evaluation**: Compare providers/devices for cost, reliability, and result quality trade-offs.
 
 ### Features
 
@@ -259,6 +273,10 @@ Note: Multiple projects can have the same provider/backend combinations. The pro
 - **GitHub**: [github.com/BuildersArk/qobserva](https://github.com/BuildersArk/qobserva)
 - **Issues**: [github.com/BuildersArk/qobserva/issues](https://github.com/BuildersArk/qobserva/issues)
 
+## Release Status
+
+> ⚠️ **Beta:** QObserva is currently in beta. APIs may change.
+
 ## Reporting Issues / Getting Help
 
 If you run into problems, have questions, or want to request features, please open an issue on GitHub:
@@ -276,3 +294,13 @@ from BuildersArk LLC. See the `LICENSE` file for full terms.
 
 **Contributors:** By submitting a pull request or contribution, you agree to the
 [Contributor License Agreement (CLA)](CLA.md).
+
+## GitHub SEO Keywords
+
+`quantum-computing`, `qiskit`, `cirq`, `observability`, `monitoring`, `python`, `developer-tools`
+
+## Support QObserva
+
+If QObserva is useful to your work, please star the repository:
+
+- [https://github.com/BuildersArk/qobserva](https://github.com/BuildersArk/qobserva)
