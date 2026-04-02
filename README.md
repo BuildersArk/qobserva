@@ -1,6 +1,6 @@
 # QObserva
 
-Quantum program observability and benchmarking. Local-first, security-first observability for quantum computing.
+Quantum program observability and benchmarking. Local-first observability for quantum computing.
 
 > ⚠️ **Beta:** QObserva is currently in beta. APIs may change.
 
