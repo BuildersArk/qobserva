@@ -14,10 +14,7 @@ These examples show how to integrate QObserva in your code using `@observe_run`.
 
 ```bash
 # From qobserva root directory
-pip install -e packages/qobserva_agent
-pip install -e packages/qobserva_collector
-pip install -e packages/qobserva_local
-pip install -e packages/qobserva
+pip install qobserva
 ```
 
 ### 2. Install SDK Dependencies
@@ -50,7 +47,7 @@ pip install --upgrade "dimod>=0.12.20"
 
 ```bash
 # Start collector and React dashboard
-python -m qobserva_local.cli up
+qobserva up
 ```
 
 This starts:
