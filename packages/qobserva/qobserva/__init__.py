@@ -1,9 +1,14 @@
 """QObserva - Unified quantum observability package."""
 
-__version__ = "0.1.4"
+from pkgutil import extend_path
 
-# In PyPI installs, qobserva-agent and qobserva share the same package namespace.
-# Import directly from the installed namespace package modules.
+# Merge `qobserva` from meta + agent when they live on different sys.path entries
+# (e.g. `pip install -e packages/qobserva` and `pip install -e packages/qobserva_agent`).
+__path__ = extend_path(__path__, __name__)
+
+__version__ = "0.1.5"
+
+# Agent modules (`observe`, `client`, …) ship in the `qobserva-agent` distribution.
 try:
     from .observe import observe_run
     from .client import QObservaClient

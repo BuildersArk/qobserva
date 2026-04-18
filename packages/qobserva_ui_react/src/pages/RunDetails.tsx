@@ -16,6 +16,16 @@ import { checkTagWarnings } from '../utils/tagWarnings';
 import { ChevronDown, ChevronUp, AlertTriangle, Info } from 'lucide-react';
 import CopyableRunId from '../components/CopyableRunId';
 
+/** Version as stored on the run event (JSON); tolerates null and non-strings. */
+function formatStoredVersion(v: unknown): string {
+  if (v == null || v === '') return '—';
+  if (typeof v === 'string') {
+    const t = v.trim();
+    return t.length > 0 ? `v${t}` : '—';
+  }
+  return `v${String(v)}`;
+}
+
 export default function RunDetails() {
   const { runId } = useParams<{ runId: string }>();
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
@@ -149,11 +159,39 @@ export default function RunDetails() {
             </span>
           </div>
         </div>
+
+        {/* QObserva versions for this run (event payload; not the live Settings install) */}
+        <div className="mt-4 pt-4 border-t border-dark-border">
+          <h4 className="text-sm font-semibold text-white mb-1">QObserva components (this run)</h4>
+          <p className="text-xs text-dark-text-muted mb-3">
+            Versions stored with this run&apos;s telemetry. Missing values show as — (e.g. runs recorded before this field existed, or not present in the payload).
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+            <div className="flex flex-col">
+              <span className="text-dark-text-muted mb-1">QObserva (meta)</span>
+              <span className="text-dark-text font-medium">
+                {formatStoredVersion(event.software?.qobserva_version)}
+              </span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-dark-text-muted mb-1">QObserva Agent</span>
+              <span className="text-dark-text font-medium">
+                {formatStoredVersion(event.software?.agent_version)}
+              </span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-dark-text-muted mb-1">QObserva Collector</span>
+              <span className="text-dark-text font-medium">
+                {formatStoredVersion(event.software?.collector_version)}
+              </span>
+            </div>
+          </div>
+        </div>
         
-        {/* SDK and Software Information */}
+        {/* SDK / Python (quantum stack) */}
         {(event.software?.sdk || event.software?.python_version) && (
           <div className="mt-4 pt-4 border-t border-dark-border">
-            <h4 className="text-sm font-semibold text-white mb-3">Software Environment</h4>
+            <h4 className="text-sm font-semibold text-white mb-3">Software environment</h4>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
               {event.software.sdk?.name && (
                 <div className="flex flex-col">
@@ -170,12 +208,6 @@ export default function RunDetails() {
                 <div className="flex flex-col">
                   <span className="text-dark-text-muted mb-1">Python</span>
                   <span className="text-dark-text font-medium">{event.software.python_version}</span>
-                </div>
-              )}
-              {event.software.agent_version && (
-                <div className="flex flex-col">
-                  <span className="text-dark-text-muted mb-1">QObserva Agent</span>
-                  <span className="text-dark-text font-medium">v{event.software.agent_version}</span>
                 </div>
               )}
             </div>

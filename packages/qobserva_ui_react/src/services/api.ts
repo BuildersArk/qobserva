@@ -46,7 +46,9 @@ export interface Event {
     name: string;
   };
   software?: {
+    qobserva_version?: string;
     agent_version?: string;
+    collector_version?: string;
     sdk?: {
       name?: string;
       version?: string;

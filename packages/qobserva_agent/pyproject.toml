@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "qobserva-agent"
-version = "0.1.0"
+version = "0.1.1"
 description = "QObserva agent: decorator-first telemetry for quantum runs (Qiskit, Braket, Cirq, PennyLane, pyQuil, D-Wave)."
 readme = "README.md"
 requires-python = ">=3.10"
