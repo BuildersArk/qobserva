@@ -14,6 +14,16 @@ from .registry import load_adapters, select_adapter
 from .report import iso_now, report_run
 from .sanitize import sanitize_error_message
 
+def _package_version(dist_name: str) -> str | None:
+    """Installed distribution version, or None if not importable as a wheel/sdist."""
+    try:
+        from importlib import metadata
+
+        return metadata.version(dist_name)
+    except Exception:
+        return None
+
+
 def _hash_program(obj: Any) -> str:
     try:
         b = json.dumps(str(obj), sort_keys=True).encode("utf-8")
@@ -188,6 +198,20 @@ def observe_run(
 
             shots = int(extracted.get("shots", 1) or 1)
 
+            _sw: Dict[str, Any] = {
+                "sdk": extracted.get("sdk", {}),
+                "python_version": platform.python_version(),
+            }
+            _av = _package_version("qobserva-agent")
+            if _av:
+                _sw["agent_version"] = _av
+            _qv = _package_version("qobserva")
+            if _qv:
+                _sw["qobserva_version"] = _qv
+            _cv = _package_version("qobserva-collector")
+            if _cv:
+                _sw["collector_version"] = _cv
+
             event = {
                 "schema_version": "0.1.0",
                 "event_id": str(uuid.uuid4()),
@@ -196,11 +220,7 @@ def observe_run(
                 "project": project,
                 "tags": tags,
                 "actor": {"host": socket.gethostname()},
-                "software": {
-                    "agent_version": "0.1.0",
-                    "sdk": extracted.get("sdk", {}),
-                    "python_version": platform.python_version(),
-                },
+                "software": _sw,
                 "backend": extracted.get("backend", {"provider": "unknown", "name": "unknown"}),
                 "program": extracted.get("program", {
                     "kind": "circuit",

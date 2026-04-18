@@ -18,7 +18,7 @@ from .storage import (
 from .analysis import compute_metrics_and_insights
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="QObserva Collector", version="0.1.0")
+    app = FastAPI(title="QObserva Collector", version="0.1.3")
 
     app.add_middleware(
         CORSMiddleware,
@@ -43,6 +43,36 @@ def create_app() -> FastAPI:
         except metadata.PackageNotFoundError:
             return "unknown"
 
+    def _dist_version_or_none(dist_name: str) -> str | None:
+        try:
+            return metadata.version(dist_name)
+        except metadata.PackageNotFoundError:
+            return None
+
+    def _enrich_software_versions(ev: Dict[str, Any]) -> None:
+        """
+        Fill missing software.* version strings from this collector's environment.
+
+        Client telemetry is preferred when present; this only backfills gaps so
+        stored run artifacts and Run Details stay useful for older agents or sparse payloads.
+        """
+        sw = ev.get("software")
+        if sw is None:
+            sw = {}
+            ev["software"] = sw
+        if not isinstance(sw, dict):
+            return
+        for key, dist in (
+            ("qobserva_version", "qobserva"),
+            ("agent_version", "qobserva-agent"),
+            ("collector_version", "qobserva-collector"),
+        ):
+            cur = sw.get(key)
+            if cur is None or (isinstance(cur, str) and not cur.strip()):
+                v = _dist_version_or_none(dist)
+                if v:
+                    sw[key] = v
+
     def auth(authorization: str | None = Header(default=None)):
         cfg = load_config()
         if not cfg.require_token:
@@ -59,6 +89,8 @@ def create_app() -> FastAPI:
         errs = validate_event_dict(event)
         if errs:
             raise HTTPException(status_code=400, detail={"errors": errs})
+
+        _enrich_software_versions(event)
 
         run_id = event["run_id"]
         if db.query(Run).filter(Run.run_id == run_id).first():
