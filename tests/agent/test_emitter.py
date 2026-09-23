@@ -92,6 +92,23 @@ def test_user_is_told_once_when_collector_is_unreachable():
     assert p.stderr.count("could not record run telemetry") == 1
     assert time.monotonic() - t0 < 30
 
+def test_program_exit_waits_at_most_briefly_for_a_down_local_collector():
+    # Windows retries refused connections for seconds; the local connect cap keeps exit fast.
+    port = free_port()  # nothing listening
+    with_run = textwrap.dedent(f"""
+        from qobserva import observe_run
+        @observe_run(project="p", tags={{"sdk": "qiskit"}}, endpoint="http://127.0.0.1:{port}/v1/ingest/run-event")
+        def run():
+            return {{"counts": {{"0": 1}}}}
+        run()
+    """)
+    baseline = "from qobserva import observe_run"
+    def elapsed(script: str) -> float:
+        t0 = time.monotonic()
+        subprocess.run([sys.executable, "-c", script], capture_output=True, timeout=60)
+        return time.monotonic() - t0
+    assert elapsed(with_run) - elapsed(baseline) < 2.5
+
 def test_sync_mode_sends_before_returning(collector, monkeypatch):
     from qobserva import observe_run
 

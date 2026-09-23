@@ -11,6 +11,7 @@
 
 ### Reliability
 - **Agent:** telemetry is sent in the background, so the decorated function no longer waits for the collector. Before, an unreachable collector added up to 10s per run. Pending runs are flushed at exit, and `qobserva.flush()` is available for notebooks and tests. `QOBSERVA_ASYNC=0` restores synchronous sending.
+- **Agent:** sending a run is about 1s faster on machines where loading the TLS certificate bundle is slow; it's skipped for plain `http://` collectors, and `https://` endpoints are still fully verified. With a local collector that's down, the program exits about 1.5s later than normal (measured on Windows). Before, Windows retries of refused connections plus certificate loading added about 4.3s.
 - **Agent:** if the collector can't be reached, QObserva prints one warning instead of failing silently.
 - **Packaging:** `qobserva` and `qobserva-agent` no longer overwrite each other's `cli.py` or the `qobserva` command. Before, reinstalling `qobserva-agent` could remove `qobserva up`. The agent's utility CLI is now `qobserva-agent`.
 - **Collector / local:** reported versions now come from the installed packages instead of stale hardcoded strings.
