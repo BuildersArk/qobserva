@@ -1,6 +1,78 @@
 name: CI
 on: [push, pull_request]
 jobs:
+  tests:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        include:
+          - os: windows-latest
+            python-version: "3.12"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install packages from source
+        run: |
+          python -m pip install -U pip
+          pip install -e packages/qobserva_agent -e packages/qobserva_collector -e packages/qobserva_local -e packages/qobserva
+          pip install pytest "tomli; python_version < '3.11'"
+      - name: Run tests
+        run: pytest tests -q
+
+  sdk-adapters:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install packages and SDKs (Qiskit, Cirq, PennyLane, D-Wave dimod)
+        run: |
+          python -m pip install -U pip
+          pip install -e packages/qobserva_agent -e packages/qobserva_collector -e packages/qobserva_local -e packages/qobserva
+          pip install pytest qiskit qiskit-aer qiskit-ibm-runtime cirq pennylane dimod
+      - name: Run SDK adapter tests
+        run: pytest tests/agent/test_qiskit_backend_labels.py tests/agent/test_cirq_adapter.py tests/agent/test_pennylane_adapter.py tests/agent/test_dwave_adapter.py -v
+
+  pyquil-adapter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Start Rigetti QVM and quilc
+        run: |
+          docker run -d -p 5000:5000 rigetti/qvm -S
+          docker run -d -p 5555:5555 rigetti/quilc -R
+      - name: Install packages and pyQuil
+        run: |
+          python -m pip install -U pip
+          pip install -e packages/qobserva_agent -e packages/qobserva_collector -e packages/qobserva_local -e packages/qobserva
+          pip install pytest pyquil
+      - name: Run pyQuil adapter tests
+        run: |
+          for i in $(seq 1 30); do (echo > /dev/tcp/127.0.0.1/5000) 2>/dev/null && (echo > /dev/tcp/127.0.0.1/5555) 2>/dev/null && break; sleep 1; done
+          pytest tests/agent/test_pyquil_adapter.py -v
+
+  dashboard-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Build React dashboard
+        working-directory: packages/qobserva_ui_react
+        run: |
+          npm ci
+          npm run build
+
   pypi-install-smoke:
     runs-on: ubuntu-latest
     strategy:

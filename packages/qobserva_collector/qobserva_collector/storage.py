@@ -1,13 +1,49 @@
 from __future__ import annotations
 
-import gzip, json
+import gzip, hashlib, json, re
 from pathlib import Path
 from typing import Any, Dict
 from .config import load_config
 
-def _base_dir(project: str, run_id: str) -> Path:
+# Characters that are path separators or invalid in Windows/POSIX file names.
+_UNSAFE_CHARS = re.compile(r'[\x00-\x1f<>:"/\\|?*]')
+_WINDOWS_RESERVED = {
+    "CON", "PRN", "AUX", "NUL",
+    *(f"COM{i}" for i in range(1, 10)),
+    *(f"LPT{i}" for i in range(1, 10)),
+}
+_MAX_COMPONENT_LEN = 100
+
+def safe_path_component(name: str) -> str:
+    """
+    Turn a user-supplied project/run_id into a single, safe directory name.
+
+    Names that are already safe are returned unchanged, so existing on-disk layouts
+    stay the same. Anything that could escape the artifacts directory (separators,
+    "..", drive letters, reserved device names) is replaced and suffixed with a short
+    hash of the original so distinct inputs never collide.
+    """
+    name = str(name)
+    cleaned = _UNSAFE_CHARS.sub("_", name).strip(" .")
+    if cleaned.split(".")[0].upper() in _WINDOWS_RESERVED:
+        cleaned = f"_{cleaned}"
+    if not cleaned:
+        cleaned = "_"
+    if cleaned != name or len(cleaned) > _MAX_COMPONENT_LEN:
+        digest = hashlib.sha256(name.encode("utf-8")).hexdigest()[:8]
+        cleaned = f"{cleaned[:_MAX_COMPONENT_LEN]}-{digest}"
+    return cleaned
+
+def _artifacts_root() -> Path:
     cfg = load_config()
-    base = Path(cfg.data_dir) / "artifacts" / project / run_id
+    return (Path(cfg.data_dir) / "artifacts").resolve()
+
+def _base_dir(project: str, run_id: str) -> Path:
+    root = _artifacts_root()
+    base = (root / safe_path_component(project) / safe_path_component(run_id)).resolve()
+    # Defense in depth: never write outside the artifacts directory.
+    if root not in base.parents:
+        raise ValueError("Refusing to store artifacts outside the data directory")
     base.mkdir(parents=True, exist_ok=True)
     return base
 

@@ -26,7 +26,6 @@ QObserva does **not** execute workloads for you (BYOE). Each provider/SDK has it
 pip install --upgrade "qiskit>=1.2.0"
 
 # Braket (latest 2026 - version 1.80+)
-# ⚠️ Requires Python 3.13 or earlier
 pip install --upgrade "amazon-braket-sdk>=1.80.0"
 
 # Cirq (latest 2026 - version 1.3+)
@@ -36,7 +35,7 @@ pip install --upgrade "cirq>=1.3.0"
 pip install --upgrade "pennylane>=0.40.0"
 
 # pyQuil (version 4.0+)
-# ⚠️ Requires Python 3.12 or earlier AND Rust/Cargo
+# Requires Python 3.11-3.12 and the Rigetti QVM + quilc servers (see pyquil_example.py)
 pip install --upgrade "pyquil>=4.0.0"
 
 # D-Wave (latest 2026 - version 0.12.21)
@@ -72,14 +71,18 @@ Open http://localhost:3000 in your browser and filter by project (e.g., `qiskit_
 
 ## Python Version Compatibility
 
-| SDK | Python Version | Notes |
-|-----|----------------|-------|
-| **Qiskit** | 3.10+ | Works with Python 3.10-3.14 |
-| **Braket** | 3.10 - 3.13 | **Python 3.14+ NOT supported** (Braket SDK uses Pydantic v1) |
-| **Cirq** | 3.10+ | Works with Python 3.10-3.14 |
-| **PennyLane** | 3.10+ | Works with Python 3.10-3.14 |
-| **pyQuil** | 3.10 - 3.12 | **Python 3.13+ NOT supported** (PyQuil 4.x uses PyO3 0.20.3) |
-| **D-Wave** | 3.10+ | Works with Python 3.10-3.14 |
+Verified by running these examples on Python 3.12, 3.13 and 3.14 (September 2026):
+
+| SDK | 3.12 | 3.13 | 3.14 |
+|-----|------|------|------|
+| **Qiskit** | ✅ | ✅ | ✅ |
+| **Braket** | ✅ | ✅ | ✅ |
+| **Cirq** | ✅ | ✅ | ✅ |
+| **PennyLane** | ✅ | ✅ | ✅ |
+| **pyQuil** | ✅ | ❌ | ❌ |
+| **D-Wave** | ✅ | ✅ | ✅ |
+
+pyQuil itself requires Python 3.11–3.12. See [SDK Compatibility](../docs/SDK_COMPATIBILITY.md).
 
 **Recommended:** Use **Python 3.12** for best compatibility with all SDKs.
 
@@ -93,7 +96,7 @@ All examples use proper project names and tags for testing:
 - `pennylane_example.py` - PennyLane with counts dict (project: `pennylane_test`)
 - `pyquil_example.py` - pyQuil with QVM (project: `pyquil_test`)
 - `dwave_example.py` - D-Wave with ExactSolver (project: `dwave_test`)
-- `basic_counts_dict.py` - Minimal example with plain dict
+- `basic_counts_dict.py` - Plumbing check with a fixed counts dict (no quantum execution; don't use it as benchmark data)
 
 ## Project Names and Tags
 
@@ -123,27 +126,22 @@ Examples use descriptive project names:
 | SDK | Minimum Version | Python Version | Special Requirements |
 |-----|----------------|----------------|---------------------|
 | Qiskit | 1.2.0 | 3.10+ | None |
-| Braket | 1.80.0 | 3.10 - 3.13 | ⚠️ Python 3.14+ NOT supported |
+| Braket | 1.80.0 | 3.10+ | None (3.14 verified) |
 | Cirq | 1.3.0 | 3.10+ | ⚠️ Must specify `measurement_key` |
 | PennyLane | 0.40.0 | 3.10+ | None |
-| pyQuil | 4.0.0 | 3.10 - 3.12 | ⚠️ Python 3.13+ NOT supported, Rust required |
+| pyQuil | 4.0.0 | 3.11 - 3.12 | ⚠️ Python 3.13+ not supported; QVM + quilc servers required |
 | D-Wave | 0.12.20 | 3.10+ | None |
 
 ### Known Limitations
 
-1. **Braket Python 3.14+ Incompatibility**
-   - Braket SDK uses Pydantic v1 internally
-   - **Solution:** Use Python 3.13 or earlier, or use a virtual environment
+1. **pyQuil Python 3.13+ Incompatibility**
+   - Current pyQuil releases require Python >=3.11,<3.13
+   - **Solution:** Use a Python 3.12 virtual environment
 
-2. **pyQuil Python 3.13+ Incompatibility**
-   - PyQuil 4.x uses PyO3 0.20.3
-   - **Solution:** Use Python 3.12 or earlier
+2. **pyQuil needs the QVM and quilc servers**
+   - **Solution:** `docker run -d -p 5000:5000 rigetti/qvm -S` and `docker run -d -p 5555:5555 rigetti/quilc -R`
 
-3. **pyQuil Rust Requirement**
-   - PyQuil 4.x requires Rust/Cargo to build from source
-   - **Solution:** Install Rust from https://rustup.rs/
-
-4. **Cirq Measurement Key Requirement**
+3. **Cirq Measurement Key Requirement**
    - Cirq adapter requires `measurement_key` parameter
    - Must match the key used in `cirq.measure()`
    - **Solution:** Always specify `measurement_key` matching your circuit

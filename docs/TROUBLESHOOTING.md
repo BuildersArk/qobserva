@@ -4,22 +4,13 @@ Common issues and solutions when using QObserva.
 
 ## Common Errors
 
-### Braket: Python 3.14+ / Pydantic errors
+### Nothing shows up in the dashboard / "could not record run telemetry"
 
-**Symptoms:** `ConfigError`, `ValidationError`, or import errors when using `amazon-braket-sdk`.
+**Symptoms:** Your program runs normally but prints `QObserva: could not record run telemetry to ...` once, and no run appears.
 
-**Cause:** Braket SDK uses Pydantic v1, which does not support Python 3.14+.
+**Cause:** The collector isn't running or isn't reachable at `QOBSERVA_ENDPOINT`.
 
-**Fix:**
-
-- Use **Python 3.13 or earlier** for Braket, or
-- Use a dedicated virtual environment:
-  ```bash
-  python3.13 -m venv braket_env
-  braket_env\Scripts\activate   # Windows
-  # braket_env/bin/activate     # Linux/macOS
-  pip install -e packages/qobserva_agent[braket]
-  ```
+**Fix:** Start it with `qobserva up`, then run your program again. Telemetry is sent in the background, so an unreachable collector never slows down or breaks your program.
 
 ---
 
@@ -41,11 +32,33 @@ To avoid building, you can skip pyQuil if you don’t need it.
 
 ### pyQuil: Python 3.13+ not supported
 
-**Symptoms:** Build or runtime errors with pyQuil on Python 3.13+.
+**Symptoms:** `AttributeError: type object 'quil.instructions.Instruction' has no attribute ...` on `import pyquil`, or pyQuil fails to install on Python 3.13+.
 
-**Cause:** PyQuil 4.x uses PyO3 0.20.3, which supports up to Python 3.12.
+**Cause:** Current pyQuil releases require Python `>=3.11,<3.13`. On 3.13+, pip falls back to an older pyQuil that doesn't work with the `quil` library it installs. `qobserva-agent[pyquil]` skips pyQuil on 3.13+ for this reason.
 
-**Fix:** Use **Python 3.12 or earlier** for pyQuil (e.g. a separate venv).
+**Fix:** Use a **Python 3.12** virtual environment for pyQuil.
+
+---
+
+### pyQuil: run fails with a connection error
+
+**Symptoms:** The pyQuil example fails, and the run is recorded as failed.
+
+**Cause:** pyQuil needs the Rigetti QVM and quilc servers.
+
+**Fix:**
+```bash
+docker run -d -p 5000:5000 rigetti/qvm -S
+docker run -d -p 5555:5555 rigetti/quilc -R
+```
+
+---
+
+### D-Wave: "DLL load failed ... The filename or extension is too long" (Windows)
+
+**Cause:** The virtual environment is in a folder with a very long path, and dimod's compiled modules exceed the Windows path limit.
+
+**Fix:** Create the venv in a short path (e.g. `C:\venvs\qobserva`) or enable Windows long path support.
 
 ---
 
@@ -108,7 +121,7 @@ def run():
 No. The examples use `LocalSimulator`, which runs locally. For real Braket devices you need AWS credentials.
 
 **Can I use Python 3.14?**  
-Yes for Qiskit, Cirq, PennyLane, D-Wave. No for Braket (use ≤3.13) and pyQuil (use ≤3.12). See [SDK Compatibility](SDK_COMPATIBILITY.md).
+Yes for Qiskit, Braket, Cirq, PennyLane and D-Wave (all verified on 3.14). Not for pyQuil (use 3.12). See [SDK Compatibility](SDK_COMPATIBILITY.md).
 
 **Do I have to install all 6 SDKs?**  
 No. Install only the SDKs you use (e.g. `pip install -e packages/qobserva_agent[qiskit]`).

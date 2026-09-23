@@ -26,7 +26,10 @@ import dimod
     benchmark_params={
         "problem_type": "qubo",
         "num_variables": 3,
-    }
+    },
+    # A SampleSet doesn't say which sampler produced it; ExactSolver runs locally.
+    backend="ExactSolver",
+    provider="local_sim",
 )
 def run():
     """Solve a simple QUBO problem using D-Wave ExactSolver."""

@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import json
 import platform
-import socket
 import time
 import uuid
 from functools import wraps
@@ -11,8 +10,9 @@ from typing import Any, Callable, Dict, Optional
 
 from .adapters.base import AdapterContext
 from .registry import load_adapters, select_adapter
-from .report import iso_now, report_run
-from .sanitize import sanitize_error_message
+from .emitter import emit
+from .report import iso_now
+from .sanitize import host_identity, sanitize_error_message
 
 def _package_version(dist_name: str) -> str | None:
     """Installed distribution version, or None if not importable as a wheel/sdist."""
@@ -97,6 +97,27 @@ def _fallback_extracted(tags: Dict[str, str] | None) -> Dict[str, Any]:
         "sdk": {"name": sdk_l, "version": None},
     }
 
+def _apply_backend_override(extracted: Dict[str, Any], backend: Any, provider: str | None) -> None:
+    """Explicit backend=/provider= from the decorator win over values inferred from the result."""
+    if backend is None and provider is None:
+        return
+    info = dict(extracted.get("backend") or {"provider": "unknown", "name": "unknown"})
+    if isinstance(backend, str):
+        info["name"] = backend
+    elif backend is not None and info.get("name") in (None, "", "unknown"):
+        # Adapters that understand backend objects already used the hint; this covers the rest.
+        name = getattr(backend, "name", None)
+        if callable(name):
+            try:
+                name = name()
+            except Exception:
+                name = None
+        if name:
+            info["name"] = str(name)
+    if provider:
+        info["provider"] = provider
+    extracted["backend"] = info
+
 def observe_run(
     project: str,
     tags: Optional[Dict[str, str]] = None,
@@ -107,6 +128,8 @@ def observe_run(
     benchmark_params: Optional[Dict[str, Any]] = None,
     endpoint: str | None = None,
     api_key: str | None = None,
+    backend: Any = None,
+    provider: str | None = None,
 ):
     """
     Decorator to instrument quantum program runs with QObserva telemetry.
@@ -123,6 +146,10 @@ def observe_run(
         benchmark_params: Optional benchmark parameters
         endpoint: Optional custom collector endpoint
         api_key: Optional API key for authentication
+        backend: Optional backend the run executed on, when the SDK result does not say
+            (e.g. Qiskit V2 primitive results carry no backend). Either an SDK backend
+            object (AerSimulator(), service.backend("ibm_brisbane"), ...) or a name string.
+        provider: Optional provider label to record (e.g. "ibm", "aws_braket", "local_sim").
     
     Example:
         @observe_run(
@@ -160,10 +187,12 @@ def observe_run(
             exc: BaseException | None = None
             status = "success"
             obj: Any = None
+            job: Any = None
 
             try:
                 obj = fn(*args, **kwargs)
                 if await_result and hasattr(obj, "result") and callable(getattr(obj, "result")):
+                    job = obj
                     obj = obj.result()
             except BaseException as e:
                 exc = e
@@ -183,6 +212,8 @@ def observe_run(
                 ended_at_iso=ended_iso,
                 runtime_ms=runtime_ms,
                 exception=exc,
+                job=job,
+                backend_hint=backend,
             )
 
             # Select an adapter even if obj is None (e.g., user forgot to return a result)
@@ -195,6 +226,8 @@ def observe_run(
                     extracted = _fallback_extracted(tags)
             else:
                 extracted = _fallback_extracted(tags)
+
+            _apply_backend_override(extracted, backend, provider)
 
             shots = int(extracted.get("shots", 1) or 1)
 
@@ -219,7 +252,7 @@ def observe_run(
                 "created_at": started_iso,
                 "project": project,
                 "tags": tags,
-                "actor": {"host": socket.gethostname()},
+                "actor": host_identity(),
                 "software": _sw,
                 "backend": extracted.get("backend", {"provider": "unknown", "name": "unknown"}),
                 "program": extracted.get("program", {
@@ -251,9 +284,9 @@ def observe_run(
                 "provider_payload": extracted.get("provider_payload", {"included": False}),
             }
 
-            # Best effort emission: do not break user workload if telemetry fails.
+            # Best effort, non-blocking emission: telemetry must never slow down or break the user workload.
             try:
-                report_run(event, endpoint=endpoint, api_key=api_key)
+                emit(event, endpoint=endpoint, api_key=api_key)
             except Exception:
                 pass
 

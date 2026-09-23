@@ -179,19 +179,20 @@ pip install qobserva-agent[dwave]
 
 ### Python Version Compatibility
 
-| SDK | Python Version | Notes |
-|-----|----------------|-------|
-| **Qiskit** | 3.10+ | Works with Python 3.10-3.14 |
-| **Braket** | 3.10 - 3.13 | **Python 3.14+ NOT supported** (Braket SDK uses Pydantic v1 which doesn't support Python 3.14+) |
-| **Cirq** | 3.10+ | Works with Python 3.10-3.14 |
-| **PennyLane** | 3.10+ | Works with Python 3.10-3.14 |
-| **pyQuil** | 3.10 - 3.12 | **Python 3.13+ NOT supported** (PyQuil 4.x uses PyO3 0.20.3 which supports up to Python 3.12) |
-| **D-Wave** | 3.10+ | Works with Python 3.10-3.14 |
+Verified by running each SDK's example on Python 3.12, 3.13 and 3.14 (September 2026):
+
+| SDK | 3.12 | 3.13 | 3.14 | Notes |
+|-----|------|------|------|-------|
+| **Qiskit** (2.5.2) | ✅ | ✅ | ✅ | |
+| **Braket** (1.127.1) | ✅ | ✅ | ✅ | Python 3.14 now supported |
+| **Cirq** (1.7.0) | ✅ | ✅ | ✅ | |
+| **PennyLane** (0.45.1) | ✅ | ✅ | ✅ | |
+| **pyQuil** (4.20.0) | ✅ | ❌ | ❌ | pyQuil itself requires Python 3.11–3.12 |
+| **D-Wave** (dimod 0.12.22) | ✅ | ✅ | ✅ | |
 
 **Recommendations:**
-- **For all SDKs:** Use **Python 3.12** (supports all 6 SDKs)
-- **Without pyQuil:** Can use **Python 3.13** (supports all except pyQuil)
-- **Without Braket:** Can use **Python 3.14** (supports all except Braket)
+- **For all SDKs:** Use **Python 3.12**
+- **Without pyQuil:** Python **3.13** or **3.14** run all the other SDKs
 
 **Note:** These limitations are due to SDK dependencies, not QObserva itself. QObserva core works with Python 3.10+.
 
@@ -211,22 +212,25 @@ When using QObserva, it's important to understand how **Project**, **Provider**,
 
 | SDK | Scenario | Provider Source | Backend Source | Notes |
 |-----|----------|----------------|----------------|-------|
-| **Qiskit** | Simulator | `result.backend.provider.name` or inferred | `result.backend.name` | Usually `local_sim` for simulators, `ibm` for real devices |
-| **Qiskit** | Real Device | `result.backend.provider.name` | `result.backend.name` | Extracted from IBM backend object |
+| **Qiskit** | Aer / fake backends | `local_sim` | e.g. `aer_simulator`, `fake_manila` | From the result, the returned job, or `backend=` |
+| **Qiskit** | IBM hardware | `ibm` | Device name, e.g. `ibm_brisbane` | Return the job with `await_result=True`, or pass `backend=` |
+| **Qiskit** | StatevectorSampler / other V2 primitives | `unknown` | `unknown` | V2 primitive results don't name their backend; pass `backend=` / `provider=` |
 | **Braket** | Simulator | From `result.task_metadata.deviceArn` or device name | From ARN or `result.device.name` | Usually `local_sim` for LocalSimulator |
 | **Braket** | Real Device | From ARN path (`/qpu/ionq/...` → `ionq`) | Last part of ARN | Extracted from device ARN structure |
 | **Cirq** | Simulator | Defaults to `local_sim` | `result.simulator.__class__.__name__` | Always `local_sim` for simulators |
 | **Cirq** | Real Device | From device object (if available) | From device object | May show `google` for Google devices |
 | **PennyLane** | Simulator | **Hardcoded default: `local_sim`** | **Hardcoded default: `default.qubit`** | ⚠️ Counts dicts don't include device info |
 | **PennyLane** | Real Device | Inferred from device name pattern | From `device.name` | Detects provider from device name (e.g., `qiskit.*` → `ibm`) |
-| **D-Wave** | Simulator/QPU | **Hardcoded: `dwave`** | From `sampleset.solver` or default | Extracts solver name when available |
+| **pyQuil** | QVM / QPU | `local_sim` for QVM, `rigetti` for QPU | `qvm`, or the `get_qc(...)` name when passed as `backend=` | From pyQuil 4 `QAMExecutionResult` |
+| **D-Wave** | Local samplers (`ExactSolver`, …) | `unknown`, or `local_sim` with `backend=sampler` | Sampler class name when passed as `backend=` | A SampleSet doesn't say which sampler produced it |
+| **D-Wave** | D-Wave cloud (QPU / hybrid) | `dwave` | Solver name when the sampler is passed as `backend=` | Detected from the job details D-Wave returns |
 
 ### Important Notes
 
 0. **Tags are metadata (and influence adapter selection), not backend overrides**:
    - Tags (like `sdk`, `algorithm`, `dataset`, `test`) are **user-supplied** metadata.
    - QObserva uses the `sdk` tag to make adapter selection deterministic.
-   - **Today, tags do not override** `backend.provider` / `backend.name`. Those fields are **best-effort extracted** from the SDK result object, and if missing, QObserva falls back to **sensible defaults** (e.g., `local_sim`, `default.qubit`).
+   - Tags do not override `backend.provider` / `backend.name`. Those fields are extracted from the SDK result object. When the result doesn't identify its backend, pass it explicitly with `@observe_run(backend=..., provider=...)` (a backend object such as `AerSimulator()` or a name). Otherwise QObserva records `unknown` for Qiskit rather than guessing.
 
 1. **SDK Tag is Required**: Always include `tags={"sdk": "..."}` in your decorator for reliable adapter selection. Without it, QObserva may incorrectly identify the SDK, leading to wrong provider/backend values.
 
@@ -254,6 +258,10 @@ To compare AWS vs IBM backends, filter by:
 
 Note: Multiple projects can have the same provider/backend combinations. The project is just for grouping your runs, not for identifying the quantum hardware.
 
+## Configuration
+
+Runs are sent to the collector in the background, so QObserva never slows down your program. If the collector isn't running, you get one warning and your code keeps going. Hostnames are stored as a hash and secrets are redacted from error messages. All settings (`QOBSERVA_ENDPOINT`, `QOBSERVA_HOST_MODE`, `QOBSERVA_LOCAL_TOKEN`, …) are listed in the [API Reference](docs/API_REFERENCE.md#environment-variables).
+
 ## Documentation
 
 - **[Getting Started](docs/GETTING_STARTED.md)** — Minimal path: install, start, run one example, view dashboard
@@ -262,9 +270,7 @@ Note: Multiple projects can have the same provider/backend combinations. The pro
 - **[SDK Compatibility](docs/SDK_COMPATIBILITY.md)** — Python and SDK version matrix, limitations
 - **[Troubleshooting](docs/TROUBLESHOOTING.md)** — Common errors, FAQ, and solutions
 - [Examples](examples/) — SDK-specific example scripts with proper project names and tags
-- [Project Status](STATUS.md) — Detailed progress, work log, and roadmap
-- [Adapter Selection Flow](ADAPTER_SELECTION_FLOW.md)
-- [Specifications](spec/) — Architecture and design specifications
+- [Changelog](CHANGELOG.md)
 
 ## Links
 

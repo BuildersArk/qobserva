@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import numbers
 from typing import Any, Dict, Optional
 from .base import Adapter, AdapterContext
 from .version_utils import get_sdk_version
@@ -17,9 +18,9 @@ def _cirq_timing_to_resource_usage(obj: Any) -> Optional[Dict[str, Any]]:
     # RuntimeInfo.timings_s (e.g. from workflow ExecutableResult)
     timings_s = getattr(obj, "timings_s", None)
     if isinstance(timings_s, dict) and timings_s:
-        stages["timings_s"] = {k: float(v) for k, v in timings_s.items() if isinstance(v, (int, float))}
+        stages["timings_s"] = {k: float(v) for k, v in timings_s.items() if isinstance(v, numbers.Real)}
         try:
-            total = sum(float(v) for v in timings_s.values() if isinstance(v, (int, float)))
+            total = sum(float(v) for v in timings_s.values() if isinstance(v, numbers.Real))
             if total > 0:
                 out["cpu_time_s"] = round(total, 3)
         except (TypeError, ValueError):
@@ -80,8 +81,15 @@ class CirqAdapter(Adapter):
         if hasattr(obj, "histogram") and callable(getattr(obj, "histogram")) and key:
             try:
                 h = obj.histogram(key=key)
+                # Pad to the number of measured qubits so e.g. |00> is "00", not "0".
+                width = 1
+                measurements = getattr(obj, "measurements", None)
+                if isinstance(measurements, dict) and key in measurements:
+                    shape = getattr(measurements[key], "shape", None)
+                    if shape and len(shape) == 2:
+                        width = int(shape[1])
                 for intval, cnt in dict(h).items():
-                    histogram[format(int(intval), "b")] = int(cnt)
+                    histogram[format(int(intval), f"0{width}b")] = int(cnt)
             except Exception:
                 pass
         if not histogram and isinstance(obj, dict) and "counts" in obj:

@@ -26,7 +26,11 @@ from qiskit.primitives import StatevectorSampler
     benchmark_params={
         "target_bitstrings": ["00", "11"],  # Expected outcomes
         "expected_success_rate": 0.95,  # Should be close to 1.0 (50% each)
-    }
+    },
+    # Qiskit V2 primitive results don't say which backend ran them, so declare it here.
+    # (For Aer or IBM Runtime, pass the backend object instead, e.g. backend=AerSimulator().)
+    backend="statevector_sampler",
+    provider="local_sim",
 )
 def run():
     """Create and measure a Bell state using Qiskit StatevectorSampler."""

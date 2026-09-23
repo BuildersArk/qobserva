@@ -15,6 +15,11 @@ class AdapterContext:
     ended_at_iso: str
     runtime_ms: int
     exception: BaseException | None
+    # The job object the user returned when await_result=True (before .result() replaced it).
+    # Jobs often know their backend even when the result object does not.
+    job: Any = None
+    # Backend explicitly passed to @observe_run(backend=...): an SDK backend object or a name.
+    backend_hint: Any = None
 
 class Adapter:
     name: str = "base"

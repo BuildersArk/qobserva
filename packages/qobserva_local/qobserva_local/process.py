@@ -22,6 +22,11 @@ def _env_with_data_dir() -> dict:
     # Keep local-first posture
     return env
 
+def _collector_auth_headers() -> dict:
+    """The dashboard proxy authenticates to the collector when QOBSERVA_LOCAL_TOKEN is set."""
+    token = os.getenv("QOBSERVA_LOCAL_TOKEN")
+    return {"Authorization": f"Bearer {token}"} if token else {}
+
 def start_collector_native() -> int:
     cfg = load_config()
     existing = read_pid("collector")
@@ -134,7 +139,7 @@ def _start_static_server(ui_dist_path: Path, cfg) -> int:
             if self.path.startswith('/api/'):
                 try:
                     collector_url = f"http://{cfg.collector_host}:{cfg.collector_port}{self.path.replace('/api', '/v1')}"
-                    resp = httpx.get(collector_url, timeout=5.0)
+                    resp = httpx.get(collector_url, headers=_collector_auth_headers(), timeout=5.0)
                     self.send_response(resp.status_code)
                     for k, v in resp.headers.items():
                         if k.lower() not in ('content-encoding', 'transfer-encoding', 'content-length'):
@@ -162,7 +167,7 @@ def _start_static_server(ui_dist_path: Path, cfg) -> int:
                     content_length = int(self.headers.get('Content-Length', 0))
                     body = self.rfile.read(content_length)
                     collector_url = f"http://{cfg.collector_host}:{cfg.collector_port}{self.path.replace('/api', '/v1')}"
-                    resp = httpx.post(collector_url, content=body, headers=dict(self.headers), timeout=5.0)
+                    resp = httpx.post(collector_url, content=body, headers={**dict(self.headers), **_collector_auth_headers()}, timeout=5.0)
                     self.send_response(resp.status_code)
                     for k, v in resp.headers.items():
                         if k.lower() not in ('content-encoding', 'transfer-encoding', 'content-length'):

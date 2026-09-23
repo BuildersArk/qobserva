@@ -13,7 +13,11 @@ export default defineConfig({
         // VITE_API_URL is set in docker-compose.yml for Docker environment
         target: process.env.VITE_API_URL || 'http://127.0.0.1:8080',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, '/v1')
+        rewrite: (path) => path.replace(/^\/api/, '/v1'),
+        // When the collector requires a token (QOBSERVA_LOCAL_TOKEN), the proxy adds it.
+        headers: process.env.QOBSERVA_LOCAL_TOKEN
+          ? { Authorization: `Bearer ${process.env.QOBSERVA_LOCAL_TOKEN}` }
+          : undefined,
       }
     }
   }

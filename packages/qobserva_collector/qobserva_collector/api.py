@@ -3,11 +3,12 @@ from __future__ import annotations
 import os
 from importlib import metadata
 from typing import Any, Dict, Optional
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-from .config import load_config
+from .config import LOCAL_ORIGIN_REGEX, is_allowed_origin, load_config
 from .db import Base, get_engine, SessionLocal
 from .models import Run
 from .schema import validate_event_dict
@@ -17,16 +18,36 @@ from .storage import (
 )
 from .analysis import compute_metrics_and_insights
 
-def create_app() -> FastAPI:
-    app = FastAPI(title="QObserva Collector", version="0.1.3")
+def _dist_version(dist_name: str) -> str:
+    try:
+        return metadata.version(dist_name)
+    except metadata.PackageNotFoundError:
+        return "unknown"
 
+def create_app() -> FastAPI:
+    app = FastAPI(title="QObserva Collector", version=_dist_version("qobserva-collector"))
+
+    # The dashboard reaches the collector through its same-origin /api proxy and the
+    # agent is not a browser, so only local pages need cross-origin access. This stops
+    # arbitrary websites open in the user's browser from writing to the local collector.
+    cfg = load_config()
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=cfg.cors_origins,
+        allow_origin_regex=None if cfg.cors_origins else LOCAL_ORIGIN_REGEX,
         allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.middleware("http")
+    async def reject_foreign_origins(request: Request, call_next):
+        # CORS alone does not stop "simple" cross-site POSTs (e.g. text/plain forms),
+        # so refuse any write whose browser Origin header is not allowed.
+        origin = request.headers.get("origin")
+        if request.method not in ("GET", "HEAD", "OPTIONS") and origin and not is_allowed_origin(origin, cfg.cors_origins):
+            return JSONResponse(status_code=403, content={"detail": "Origin not allowed"})
+        return await call_next(request)
 
     Base.metadata.create_all(bind=get_engine())
 
@@ -121,7 +142,7 @@ def create_app() -> FastAPI:
 
         return {"accepted": True, "run_id": run_id, "event_id": event.get("event_id")}
 
-    @app.get("/v1/runs")
+    @app.get("/v1/runs", dependencies=[Depends(auth)])
     def list_runs(
         project: str | None = None, 
         provider: str | None = None,
@@ -172,14 +193,14 @@ def create_app() -> FastAPI:
             "shots": r.shots,
         } for r in rows]
 
-    @app.get("/v1/runs/{run_id}")
+    @app.get("/v1/runs/{run_id}", dependencies=[Depends(auth)])
     def get_run(run_id: str, db: Session = Depends(get_db)):
         r = db.query(Run).filter(Run.run_id == run_id).first()
         if not r:
             raise HTTPException(status_code=404, detail="Not found")
         return load_event_bundle(r.artifact_ref)
     
-    @app.get("/v1/runs/{project}/{run_id}/event")
+    @app.get("/v1/runs/{project}/{run_id}/event", dependencies=[Depends(auth)])
     def get_run_event(project: str, run_id: str, db: Session = Depends(get_db)):
         """Get event data for a specific run."""
         r = db.query(Run).filter(Run.run_id == run_id, Run.project == project).first()
@@ -187,7 +208,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail="Run not found")
         return load_event_bundle(r.artifact_ref)
     
-    @app.get("/v1/runs/{project}/{run_id}/analysis")
+    @app.get("/v1/runs/{project}/{run_id}/analysis", dependencies=[Depends(auth)])
     def get_run_analysis(project: str, run_id: str, db: Session = Depends(get_db)):
         """Get analysis data for a specific run."""
         r = db.query(Run).filter(Run.run_id == run_id, Run.project == project).first()
@@ -200,7 +221,7 @@ def create_app() -> FastAPI:
         """Health check endpoint."""
         return {"status": "ok"}
     
-    @app.get("/v1/settings")
+    @app.get("/v1/settings", dependencies=[Depends(auth)])
     def get_settings():
         """Get QObserva settings including data directory."""
         cfg = load_config()
@@ -213,14 +234,14 @@ def create_app() -> FastAPI:
             "qobserva_local_version": _get_installed_version("qobserva-local"),
         }
 
-    @app.get("/v1/runs/{run_id}/analysis")
+    @app.get("/v1/runs/{run_id}/analysis", dependencies=[Depends(auth)])
     def get_run_analysis(run_id: str, db: Session = Depends(get_db)):
         r = db.query(Run).filter(Run.run_id == run_id).first()
         if not r:
             raise HTTPException(status_code=404, detail="Not found")
         return load_analysis_bundle(r.analysis_ref)
 
-    @app.get("/v1/algorithms")
+    @app.get("/v1/algorithms", dependencies=[Depends(auth)])
     def get_algorithms(
         limit: int = 1000,
         db: Session = Depends(get_db)

@@ -19,14 +19,7 @@ This guide shows you how to test QObserva with real quantum SDK examples, includ
 
 **Recommended: Python 3.12** (supports all 6 SDKs)
 
-| SDK | Python Version | Notes |
-|-----|----------------|-------|
-| **Qiskit** | 3.10+ | Works with Python 3.10-3.14 |
-| **Braket** | 3.10 - 3.13 | **Python 3.14+ NOT supported** (Braket SDK uses Pydantic v1) |
-| **Cirq** | 3.10+ | Works with Python 3.10-3.14 |
-| **PennyLane** | 3.10+ | Works with Python 3.10-3.14 |
-| **pyQuil** | 3.10 - 3.12 | **Python 3.13+ NOT supported** (PyQuil 4.x uses PyO3 0.20.3) |
-| **D-Wave** | 3.10+ | Works with Python 3.10-3.14 |
+Python 3.12 runs all 6 SDKs. Python 3.13 and 3.14 run every SDK except pyQuil (pyQuil requires 3.11–3.12). See [SDK Compatibility](SDK_COMPATIBILITY.md) for the verified matrix.
 
 ### Install QObserva
 
@@ -52,7 +45,6 @@ Install only the SDKs you want to test:
 pip install --upgrade "qiskit>=1.2.0"
 
 # Braket (latest 2026 - version 1.80+)
-# ⚠️ Requires Python 3.13 or earlier
 pip install --upgrade "amazon-braket-sdk>=1.80.0"
 
 # Cirq (latest 2026 - version 1.3+)
@@ -62,8 +54,7 @@ pip install --upgrade "cirq>=1.3.0"
 pip install --upgrade "pennylane>=0.40.0"
 
 # pyQuil (version 4.0+)
-# ⚠️ Requires Python 3.12 or earlier AND Rust/Cargo
-# See troubleshooting section below
+# Requires Python 3.11-3.12 and the Rigetti QVM + quilc servers (see the pyQuil section)
 pip install --upgrade "pyquil>=4.0.0"
 
 # D-Wave (latest 2026 - version 0.12.21)
@@ -113,7 +104,9 @@ from qiskit.primitives import StatevectorSampler
     benchmark_params={
         "target_bitstrings": ["00", "11"],
         "expected_success_rate": 0.95,
-    }
+    },
+    backend="statevector_sampler",  # V2 primitive results don't name their backend
+    provider="local_sim",
 )
 def run_bell_state():
     qc = QuantumCircuit(2, 2)
@@ -169,17 +162,7 @@ if __name__ == "__main__":
 
 **Version Requirements:**
 - amazon-braket-sdk >= 1.80.0
-- **Python 3.10 - 3.13 ONLY** (Python 3.14+ NOT supported)
-
-**Limitations:**
-- ⚠️ **Python 3.14+ incompatible** - Braket SDK uses Pydantic v1 internally
-- If using Python 3.14+, use a virtual environment with Python 3.13:
-  ```bash
-  python3.13 -m venv braket_env
-  braket_env\Scripts\activate  # Windows
-  # braket_env/bin/activate  # Linux/Mac
-  pip install -e packages/qobserva_agent[braket]
-  ```
+- Python 3.12 - 3.14 (verified with amazon-braket-sdk 1.127.1)
 
 ### Cirq
 
@@ -283,27 +266,23 @@ from pyquil.gates import H, CNOT, MEASURE
     benchmark_params={
         "target_bitstrings": ["00", "11"],
         "expected_success_rate": 0.95,
-    }
+    },
+    backend="2q-qvm",
+    provider="local_sim",
 )
 def run_bell_state():
+    from pyquil import get_qc
+
     program = Program()
     ro = program.declare("ro", "BIT", 2)
     program += H(0)
     program += CNOT(0, 1)
     program += MEASURE(0, ro[0])
     program += MEASURE(1, ro[1])
-    
-    try:
-        from pyquil import get_qc
-        qc = get_qc("2q-qvm")
-        program.wrap_in_numshots_loop(1024)
-        result = qc.run(program)
-    except Exception as e:
-        print(f"QVM not available ({e}), using simulated results")
-        import random
-        result = [[0, 0] if random.random() < 0.5 else [1, 1] for _ in range(1024)]
-    
-    return result
+    program.wrap_in_numshots_loop(1024)
+
+    qc = get_qc("2q-qvm")
+    return qc.run(qc.compile(program))
 
 if __name__ == "__main__":
     run_bell_state()
@@ -312,15 +291,14 @@ if __name__ == "__main__":
 
 **Version Requirements:**
 - pyquil >= 4.0.0
-- **Python 3.10 - 3.12 ONLY** (Python 3.13+ NOT supported)
-- **Rust/Cargo** required for building
+- **Python 3.11 - 3.12 only** (current pyQuil releases do not support 3.13+)
 
 **Limitations:**
-- ⚠️ **Python 3.13+ incompatible** - PyQuil 4.x uses PyO3 0.20.3 which supports up to Python 3.12
-- ⚠️ **Requires Rust/Cargo** for building from source:
-  - Windows: Download from https://rustup.rs/
-  - Linux/Mac: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
-- QVM server recommended but not required (can return list of bitstrings)
+- Requires the Rigetti QVM and quilc servers. Without them the run fails and is recorded as failed:
+  ```bash
+  docker run -d -p 5000:5000 rigetti/qvm -S
+  docker run -d -p 5555:5555 rigetti/quilc -R
+  ```
 
 ### D-Wave
 
@@ -405,29 +383,22 @@ tags={
 | SDK | Minimum Version | Python Version | Special Requirements |
 |-----|----------------|----------------|---------------------|
 | Qiskit | 1.2.0 | 3.10+ | None |
-| Braket | 1.80.0 | 3.10 - 3.13 | ⚠️ Python 3.14+ NOT supported |
+| Braket | 1.80.0 | 3.10+ | None (3.14 verified) |
 | Cirq | 1.3.0 | 3.10+ | ⚠️ Must specify `measurement_key` |
 | PennyLane | 0.40.0 | 3.10+ | None |
-| pyQuil | 4.0.0 | 3.10 - 3.12 | ⚠️ Python 3.13+ NOT supported, Rust required |
+| pyQuil | 4.0.0 | 3.11 - 3.12 | ⚠️ Python 3.13+ not supported; QVM + quilc servers required |
 | D-Wave | 0.12.20 | 3.10+ | None |
 
 ### Known Limitations
 
-1. **Braket Python 3.14+ Incompatibility**
-   - Braket SDK uses Pydantic v1 internally
-   - Pydantic v1 doesn't support Python 3.14+
-   - **Solution:** Use Python 3.13 or earlier, or use a virtual environment
+1. **pyQuil Python 3.13+ Incompatibility**
+   - Current pyQuil releases require Python >=3.11,<3.13
+   - **Solution:** Use a Python 3.12 virtual environment for pyQuil
 
-2. **pyQuil Python 3.13+ Incompatibility**
-   - PyQuil 4.x uses PyO3 0.20.3
-   - PyO3 0.20.3 supports up to Python 3.12
-   - **Solution:** Use Python 3.12 or earlier
+2. **pyQuil needs the QVM and quilc servers**
+   - **Solution:** Run them with Docker (see the pyQuil section above)
 
-3. **pyQuil Rust Requirement**
-   - PyQuil 4.x requires Rust/Cargo to build from source
-   - **Solution:** Install Rust from https://rustup.rs/ or use pre-built wheels
-
-4. **Cirq Measurement Key Requirement**
+3. **Cirq Measurement Key Requirement**
    - Cirq adapter requires `measurement_key` parameter
    - Must match the key used in `cirq.measure()`
    - **Solution:** Always specify `measurement_key` matching your circuit
