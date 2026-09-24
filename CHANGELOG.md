@@ -14,6 +14,7 @@
 - **Agent:** sending a run is about 1s faster on machines where loading the TLS certificate bundle is slow; it's skipped for plain `http://` collectors, and `https://` endpoints are still fully verified. With a local collector that's down, the program exits about 1.5s later than normal (measured on Windows). Before, Windows retries of refused connections plus certificate loading added about 4.3s.
 - **Agent:** if the collector can't be reached, QObserva prints one warning instead of failing silently.
 - **Packaging:** `qobserva` and `qobserva-agent` no longer overwrite each other's `cli.py` or the `qobserva` command. Before, reinstalling `qobserva-agent` could remove `qobserva up`. The agent's utility CLI is now `qobserva-agent`.
+- **`qobserva up` / `qobserva down`:** `up` now detects a QObserva that's already running and says where, instead of reporting a start that didn't happen. A port held by another program gives a clear error with the settings to change. `qobserva down` from another terminal now stops the dashboard too. Before, pip installs kept serving the dashboard from the `up` process.
 - **Collector / local:** reported versions now come from the installed packages instead of stale hardcoded strings.
 
 ### Correct backend labels
@@ -36,7 +37,13 @@ Each SDK's example was run on Windows and the recorded run checked:
 - **Python 3.13:** same five SDKs work.
 - **pyQuil:** works on 3.12. Current pyQuil releases require Python 3.11–3.12, so the `pyquil` extra is skipped on 3.13+. Before this change, pip installed an old pyQuil there that fails on import.
 
+### Installation
+- `pip install "qobserva-agent[all-sdks]"` now works. The README documented it, but the agent package had no such extra, so it installed no SDKs.
+- `qobserva-local` now depends on `qobserva-collector`, so `pip install qobserva-local` followed by `qobserva-local up` works on its own.
+
 ### Examples and docs
+- Examples, Getting Started and the PyPI pages now lead with the PyPI install (`pip install qobserva "qobserva-agent[<sdk>]"`, `qobserva up`); source-checkout installs are shown second.
+- The agent's PyPI page named a non-existent `QOBSERVA_COLLECTOR_URL` setting; it now documents `QOBSERVA_ENDPOINT`.
 - The pyQuil example no longer substitutes randomly generated results when the QVM is unavailable. It now fails, and QObserva records the run as failed.
 - The API reference documents all environment variables and Qiskit labeling behavior.
 

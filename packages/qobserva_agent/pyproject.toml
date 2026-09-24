@@ -46,6 +46,14 @@ cirq = ["cirq>=1.3.0"]  # Latest Cirq (2025-2026)
 pennylane = ["pennylane>=0.40.0"]  # Latest PennyLane (2025-2026)
 pyquil = ["pyquil>=4.0.0; python_version < '3.13'"]  # pyQuil 4.x supports Python 3.11-3.12 only
 dwave = ["dimod>=0.12.20"]  # Latest dimod (0.12.21 as of 2025-2026)
+all-sdks = [
+  "qiskit>=1.2.0",
+  "amazon-braket-sdk>=1.80.0",
+  "cirq>=1.3.0",
+  "pennylane>=0.40.0",
+  "pyquil>=4.0.0; python_version < '3.13'",
+  "dimod>=0.12.20",
+]
 dev = ["pytest>=8.0.0", "ruff>=0.6.0"]
 
 [project.scripts]

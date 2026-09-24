@@ -1,8 +1,12 @@
 """pyQuil example (BYOE).
 
-Install:
+Install (from PyPI):
+  pip install qobserva "qobserva-agent[pyquil]"
+  qobserva up        # starts the collector + dashboard at http://localhost:3000
+  python pyquil_example.py
+
+Install (from a source checkout):
   pip install -e packages/qobserva_agent[pyquil]
-  pip install --upgrade "pyquil>=4.0.0"
 
 This example uses pyQuil (version 4.0+).
 Requires the Rigetti QVM and quilc servers, e.g. with Docker:

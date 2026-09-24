@@ -1,8 +1,12 @@
 """AWS Braket example (BYOE).
 
-Install:
+Install (from PyPI):
+  pip install qobserva "qobserva-agent[braket]"
+  qobserva up        # starts the collector + dashboard at http://localhost:3000
+  python braket_example.py
+
+Install (from a source checkout):
   pip install -e packages/qobserva_agent[braket]
-  pip install --upgrade "amazon-braket-sdk>=1.80.0"
 
 This example uses Amazon Braket LocalSimulator (Braket SDK 1.80+ / 2026).
 No AWS credentials needed for LocalSimulator.

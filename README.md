@@ -15,7 +15,7 @@ Think: **Datadog / Prometheus - but for quantum computing SDKs.**
 ### Prerequisites
 
 - **Python 3.10+** (see [Python Version Compatibility](#python-version-compatibility) for SDK-specific requirements)
-- **Node.js** (for React dashboard)
+- **Node.js** only if you install from source (the PyPI packages include the built dashboard)
 
 > **Python Version Note:** For best compatibility with all SDKs, use **Python 3.12**. See the [Python Version Compatibility](#python-version-compatibility) section for details.
 

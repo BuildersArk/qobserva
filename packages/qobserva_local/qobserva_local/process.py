@@ -192,9 +192,10 @@ def _start_static_server(ui_dist_path: Path, cfg) -> int:
     server_thread = threading.Thread(target=run_server, daemon=True)
     server_thread.start()
     
-    # Store thread ID as "pid" (not perfect but works for our use case)
-    fake_pid = server_thread.ident or 99999
-    write_pid("ui", fake_pid)
+    # The dashboard is served by a thread of this `qobserva up` process, so this process's
+    # pid is what `qobserva down` (run from another terminal) must stop.
+    ui_pid = os.getpid()
+    write_pid("ui", ui_pid)
     time.sleep(2)  # Give server more time to start and bind
     
     # Verify server is actually listening
@@ -207,7 +208,19 @@ def _start_static_server(ui_dist_path: Path, cfg) -> int:
         console.print(f"[yellow]UI dist path:[/yellow] {ui_dist_path}")
         console.print(f"[yellow]UI dist exists:[/yellow] {ui_dist_path.exists()}")
     
-    return fake_pid
+    return ui_pid
+
+def port_in_use(host: str, port: int) -> bool:
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.5)
+        return s.connect_ex((host, port)) == 0
+
+def qobserva_collector_running(host: str, port: int) -> bool:
+    try:
+        return httpx.get(f"http://{host}:{port}/v1/health", timeout=1.5).json().get("status") == "ok"
+    except Exception:
+        return False
 
 def wait_for_collector(timeout_s: float = 15.0) -> bool:
     cfg = load_config()
@@ -226,6 +239,10 @@ def wait_for_collector(timeout_s: float = 15.0) -> bool:
 def stop_pid(name: str):
     pid = read_pid(name)
     if not pid:
+        return
+    if pid == os.getpid():
+        # Ctrl+C in `qobserva up`: this process is exiting anyway.
+        clear_pid(name)
         return
     try:
         os.kill(pid, 15)
