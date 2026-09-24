@@ -35,7 +35,10 @@ def run():
 run()
 ```
 
-Point the agent at your local collector with `QOBSERVA_COLLECTOR_URL` (or use `qobserva up` to start the stack).
+Start the local collector and dashboard with `pip install qobserva` and `qobserva up`, then open http://localhost:3000.
+To send runs elsewhere, set `QOBSERVA_ENDPOINT` (default `http://127.0.0.1:8080/v1/ingest/run-event`).
+
+Runs are sent in the background, so telemetry never slows your program. If the collector isn't running, you get one warning and your code continues. Secrets in error messages are redacted, and the hostname is stored as a hash (`QOBSERVA_HOST_MODE=raw|hash|none`).
 
 - **Full docs:** [qobserva.com](https://qobserva.com) · [Documentation](https://qobserva.com/docs.html)
 - **Repo:** [GitHub — BuildersArk/qobserva](https://github.com/BuildersArk/qobserva)

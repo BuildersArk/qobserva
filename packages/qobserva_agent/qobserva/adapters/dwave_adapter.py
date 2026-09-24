@@ -32,6 +32,20 @@ def _dwave_timing_to_resource_usage(timing: Dict[str, Any]) -> Optional[Dict[str
     return out
 
 
+def describe_sampler(sampler: Any) -> Optional[Dict[str, str]]:
+    """Classify a sampler passed as @observe_run(backend=sampler) by the package it comes from."""
+    if sampler is None or isinstance(sampler, str):
+        return None
+    module = type(sampler).__module__ or ""
+    if module.startswith("dwave.system"):
+        # DWaveSampler / LeapHybridSampler run on D-Wave's cloud; name the solver when known.
+        solver = getattr(getattr(sampler, "solver", None), "name", None)
+        return {"provider": "dwave", "name": str(solver or type(sampler).__name__)}
+    if module.startswith(("dimod", "dwave.samplers", "neal", "tabu", "greedy")):
+        return {"provider": "local_sim", "name": type(sampler).__name__}
+    return None
+
+
 class DWaveAdapter(Adapter):
     name = "dwave"
     priority = 40
@@ -41,8 +55,8 @@ class DWaveAdapter(Adapter):
 
     def extract(self, obj: Any, context: AdapterContext) -> Dict[str, Any]:
         energies = {"value": None, "stderr": None}
-        backend_name = "dwave-sampler"  # Default
-        provider = "dwave"
+        backend_name = "unknown"
+        provider = "unknown"
         
         try:
             # Try multiple ways to get energy from dimod sampleset
@@ -91,56 +105,11 @@ class DWaveAdapter(Adapter):
                     except Exception:
                         pass
             
-            # Extract backend/sampler name from sampleset
-            # Try to get solver/sampler information
-            if hasattr(obj, "solver"):
-                try:
-                    solver = obj.solver
-                    if hasattr(solver, "__class__"):
-                        solver_name = solver.__class__.__name__
-                        # Map common solver names
-                        if "ExactSolver" in solver_name:
-                            backend_name = "ExactSolver"
-                        elif "SimulatedAnnealingSampler" in solver_name:
-                            backend_name = "SimulatedAnnealingSampler"
-                        elif "SteepestDescentSolver" in solver_name:
-                            backend_name = "SteepestDescentSolver"
-                        elif "TabuSampler" in solver_name:
-                            backend_name = "TabuSampler"
-                        elif "DWaveSampler" in solver_name or "DWave" in solver_name:
-                            backend_name = "DWaveSampler"
-                        else:
-                            backend_name = solver_name
-                except Exception:
-                    pass
-            
-            # Try to get device/sampler from sampleset info
-            if hasattr(obj, "info"):
-                try:
-                    info = obj.info
-                    if isinstance(info, dict):
-                        # Check for device/sampler info
-                        if "sampler" in info:
-                            backend_name = str(info["sampler"])
-                        elif "device" in info:
-                            backend_name = str(info["device"])
-                        elif "solver" in info:
-                            backend_name = str(info["solver"])
-                except Exception:
-                    pass
-            
-            # Check class name for hints
-            if backend_name == "dwave-sampler":
-                try:
-                    class_name = obj.__class__.__name__
-                    if "Exact" in class_name:
-                        backend_name = "ExactSolver"
-                    elif "SimulatedAnnealing" in class_name:
-                        backend_name = "SimulatedAnnealingSampler"
-                    elif "DWave" in class_name:
-                        backend_name = "DWaveSampler"
-                except Exception:
-                    pass
+            # Backend: a SampleSet from a local dimod/dwave-samplers sampler carries no solver
+            # information (info == {}); results from D-Wave's cloud carry job details in info.
+            info = getattr(obj, "info", None)
+            if isinstance(info, dict) and ("timing" in info or "problem_id" in info):
+                provider = "dwave"  # solver name is only known when the sampler is passed as backend=
         except Exception:
             pass
 
@@ -166,6 +135,10 @@ class DWaveAdapter(Adapter):
                 resource_usage = _dwave_timing_to_resource_usage(timing)
         except Exception:
             pass
+
+        hinted = describe_sampler(context.backend_hint)
+        if hinted:
+            provider, backend_name = hinted["provider"], hinted["name"]
 
         out = {
             "sdk": {"name": "dwave_ocean", "version": get_sdk_version("dwave")},

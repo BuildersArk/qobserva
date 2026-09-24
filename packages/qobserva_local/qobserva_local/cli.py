@@ -5,7 +5,10 @@ import time
 import typer
 from rich.console import Console
 
-from .process import start_collector_native, start_ui_native, wait_for_collector, stop_pid
+from .process import (
+    port_in_use, qobserva_collector_running,
+    start_collector_native, start_ui_native, stop_pid, wait_for_collector,
+)
 from .doctor import run_doctor
 from .docker_mode import compose_up, compose_down
 from .config import load_config
@@ -25,7 +28,21 @@ def up(mode: str = "native"):
         console.print("[green]Docker compose up[/green]")
         return
 
-    # native
+    # native: refuse to start a second stack (or on ports another program holds)
+    if qobserva_collector_running(cfg.collector_host, cfg.collector_port):
+        console.print(f"[yellow]QObserva is already running[/yellow]: collector @ http://{cfg.collector_host}:{cfg.collector_port}, "
+                      f"dashboard @ http://{cfg.ui_host}:{cfg.ui_port}")
+        console.print("Stop it with [bold]qobserva down[/bold] (or Ctrl+C in the terminal running it), then run qobserva up again.")
+        raise typer.Exit(0)
+    busy = [f"{name} port {port}" for name, host, port in (
+        ("collector", cfg.collector_host, cfg.collector_port), ("dashboard", cfg.ui_host, cfg.ui_port))
+        if port_in_use(host, port)]
+    if busy:
+        console.print(f"[red]Cannot start QObserva: {' and '.join(busy)} already in use by another program.[/red]")
+        console.print("Free the port(s), or choose others, e.g. QOBSERVA_COLLECTOR_PORT=8081 and QOBSERVA_UI_PORT=3001 "
+                      "(then point your code at the new collector with QOBSERVA_ENDPOINT=http://127.0.0.1:8081/v1/ingest/run-event).")
+        raise typer.Exit(1)
+
     cpid = start_collector_native()
     ok = wait_for_collector()
     if ok:
@@ -53,8 +70,10 @@ def down(mode: str = "native"):
         console.print("[green]Docker compose down[/green]")
         return
 
-    stop_pid("ui")
+    # Collector first: when the dashboard is served by the `qobserva up` process itself,
+    # stopping "ui" ends that process.
     stop_pid("collector")
+    stop_pid("ui")
     console.print("[green]Stopped local processes[/green]")
 
 @app.command()

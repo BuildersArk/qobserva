@@ -1,8 +1,12 @@
 """PennyLane example (BYOE).
 
-Install:
+Install (from PyPI):
+  pip install qobserva "qobserva-agent[pennylane]"
+  qobserva up        # starts the collector + dashboard at http://localhost:3000
+  python pennylane_example.py
+
+Install (from a source checkout):
   pip install -e packages/qobserva_agent[pennylane]
-  pip install --upgrade "pennylane>=0.40.0"
 
 This example uses PennyLane default.qubit simulator (PennyLane 0.40+ / 2026).
 Returns measurement counts (most common use case).

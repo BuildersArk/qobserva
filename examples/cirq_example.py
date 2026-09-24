@@ -1,8 +1,12 @@
 """Cirq example (BYOE).
 
-Install:
+Install (from PyPI):
+  pip install qobserva "qobserva-agent[cirq]"
+  qobserva up        # starts the collector + dashboard at http://localhost:3000
+  python cirq_example.py
+
+Install (from a source checkout):
   pip install -e packages/qobserva_agent[cirq]
-  pip install --upgrade "cirq>=1.3.0"
 
 This example uses Cirq Simulator (Cirq 1.3+ / 2026).
 

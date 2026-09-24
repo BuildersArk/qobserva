@@ -9,7 +9,7 @@ Quantum program observability and benchmarking. Local-first, security-first obse
 ### Prerequisites
 
 - **Python 3.10+** (see [Python Version Compatibility](#python-version-compatibility) for SDK-specific requirements)
-- **Node.js** (for React dashboard)
+- No Node.js needed: the dashboard is prebuilt and included
 
 **Recommendation:** For best compatibility with all SDKs, use **Python 3.12**.
 
@@ -135,22 +135,25 @@ pip install qobserva-agent[dwave]
 
 ### Python Version Compatibility
 
-| SDK     | Python Version   | Notes |
-|--------|------------------|--------|
-| Qiskit | 3.10+            | 3.10–3.14 |
-| Braket | 3.10 – 3.13      | **3.14+ not supported** (Braket uses Pydantic v1) |
-| Cirq   | 3.10+            | 3.10–3.14 |
-| PennyLane | 3.10+         | 3.10–3.14 |
-| pyQuil | 3.10 – 3.12      | **3.13+ not supported** (PyQuil 4.x) |
-| D-Wave | 3.10+            | 3.10–3.14 |
+Verified by running each SDK's example on Python 3.12, 3.13 and 3.14 (September 2026):
 
-**Recommendations:** Use **Python 3.12** for all 6 SDKs; **Python 3.13** if you don’t need pyQuil.
+| SDK | 3.12 | 3.13 | 3.14 |
+|-----|------|------|------|
+| Qiskit | ✅ | ✅ | ✅ |
+| Braket | ✅ | ✅ | ✅ |
+| Cirq | ✅ | ✅ | ✅ |
+| PennyLane | ✅ | ✅ | ✅ |
+| pyQuil | ✅ | ❌ | ❌ |
+| D-Wave | ✅ | ✅ | ✅ |
+
+**Recommendations:** Use **Python 3.12** for all 6 SDKs. pyQuil itself supports only Python 3.11–3.12; every other SDK also runs on 3.13 and 3.14.
 
 ## Project, Provider, and Backend
 
 - **Project**: From `@observe_run(project="...")` — user-defined, for grouping runs.
-- **Provider**: Extracted from the result (e.g. `ibm`, `aws_braket`, `local_sim`).
-- **Backend**: Extracted from the result (e.g. `ibm_brisbane`, `default.qubit`).
+- **Provider**: Extracted from the result (e.g. `ibm`, `aws_braket`, `local_sim`), or `unknown` when the result doesn't say.
+- **Backend**: Extracted from the result (e.g. `ibm_brisbane`, `aer_simulator`), or `unknown`.
+- When the SDK result doesn't identify its backend (e.g. Qiskit V2 primitives), pass it: `@observe_run(..., backend=AerSimulator())` or `backend="statevector_sampler", provider="local_sim"`.
 
 Filter by these in the dashboard to compare providers and backends. Always set `tags={"sdk": "..."}` so adapter selection is correct.
 

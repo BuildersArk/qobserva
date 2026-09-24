@@ -1,8 +1,12 @@
 """Qiskit example (BYOE).
 
-Install:
+Install (from PyPI):
+  pip install qobserva "qobserva-agent[qiskit]"
+  qobserva up        # starts the collector + dashboard at http://localhost:3000
+  python qiskit_example.py
+
+Install (from a source checkout):
   pip install -e packages/qobserva_agent[qiskit]
-  pip install --upgrade "qiskit>=1.2.0"
 
 This example uses Qiskit StatevectorSampler (Qiskit 1.2+ / 2026).
 Compatible with both Qiskit 1.2+ and 2.x APIs.
@@ -26,7 +30,11 @@ from qiskit.primitives import StatevectorSampler
     benchmark_params={
         "target_bitstrings": ["00", "11"],  # Expected outcomes
         "expected_success_rate": 0.95,  # Should be close to 1.0 (50% each)
-    }
+    },
+    # Qiskit V2 primitive results don't say which backend ran them, so declare it here.
+    # (For Aer or IBM Runtime, pass the backend object instead, e.g. backend=AerSimulator().)
+    backend="statevector_sampler",
+    provider="local_sim",
 )
 def run():
     """Create and measure a Bell state using Qiskit StatevectorSampler."""

@@ -1,43 +1,23 @@
 """AWS Braket example (BYOE).
 
-Install:
+Install (from PyPI):
+  pip install qobserva "qobserva-agent[braket]"
+  qobserva up        # starts the collector + dashboard at http://localhost:3000
+  python braket_example.py
+
+Install (from a source checkout):
   pip install -e packages/qobserva_agent[braket]
-  pip install --upgrade "amazon-braket-sdk>=1.80.0"
 
 This example uses Amazon Braket LocalSimulator (Braket SDK 1.80+ / 2026).
 No AWS credentials needed for LocalSimulator.
 
 Version Requirements:
 - amazon-braket-sdk >= 1.80.0
-- Python 3.10 - 3.13 ONLY (Python 3.14+ NOT supported)
-
-Limitations:
-- ⚠️ Python 3.14+ incompatible - Braket SDK uses Pydantic v1 internally
-- If using Python 3.14+, use a virtual environment with Python 3.13:
-  python3.13 -m venv braket_env
-  braket_env\\Scripts\\activate  # Windows
-  pip install -e packages/qobserva_agent[braket]
+- Python 3.12 - 3.14 (verified with amazon-braket-sdk 1.127.1)
 """
 
 from qobserva import observe_run
 import sys
-
-# Check Python version first
-if sys.version_info >= (3, 14):
-    print("=" * 60)
-    print("⚠️  Python 3.14+ Detected - Braket SDK Incompatibility")
-    print("=" * 60)
-    print("Braket SDK uses Pydantic v1 internally, which doesn't support Python 3.14+.")
-    print("This is a known limitation of the Braket SDK.")
-    print()
-    print("Solutions:")
-    print("1. Use Python 3.13 or earlier for Braket tests")
-    print("2. Use a virtual environment with Python 3.13:")
-    print("   python3.13 -m venv braket_env")
-    print("   braket_env\\Scripts\\activate  # Windows")
-    print("   pip install -e packages/qobserva_agent[braket]")
-    print("=" * 60)
-    sys.exit(1)
 
 # Check if Braket is installed
 try:

@@ -9,7 +9,7 @@ from rich.table import Table
 from .config import load_config
 from .report import report_run
 
-app = typer.Typer(help="QObserva CLI (agent utilities).")
+app = typer.Typer(help="QObserva agent utilities (upload a saved event, show agent config).")
 console = Console()
 
 @app.command()

@@ -22,6 +22,11 @@ def _env_with_data_dir() -> dict:
     # Keep local-first posture
     return env
 
+def _collector_auth_headers() -> dict:
+    """The dashboard proxy authenticates to the collector when QOBSERVA_LOCAL_TOKEN is set."""
+    token = os.getenv("QOBSERVA_LOCAL_TOKEN")
+    return {"Authorization": f"Bearer {token}"} if token else {}
+
 def start_collector_native() -> int:
     cfg = load_config()
     existing = read_pid("collector")
@@ -134,7 +139,7 @@ def _start_static_server(ui_dist_path: Path, cfg) -> int:
             if self.path.startswith('/api/'):
                 try:
                     collector_url = f"http://{cfg.collector_host}:{cfg.collector_port}{self.path.replace('/api', '/v1')}"
-                    resp = httpx.get(collector_url, timeout=5.0)
+                    resp = httpx.get(collector_url, headers=_collector_auth_headers(), timeout=5.0)
                     self.send_response(resp.status_code)
                     for k, v in resp.headers.items():
                         if k.lower() not in ('content-encoding', 'transfer-encoding', 'content-length'):
@@ -162,7 +167,7 @@ def _start_static_server(ui_dist_path: Path, cfg) -> int:
                     content_length = int(self.headers.get('Content-Length', 0))
                     body = self.rfile.read(content_length)
                     collector_url = f"http://{cfg.collector_host}:{cfg.collector_port}{self.path.replace('/api', '/v1')}"
-                    resp = httpx.post(collector_url, content=body, headers=dict(self.headers), timeout=5.0)
+                    resp = httpx.post(collector_url, content=body, headers={**dict(self.headers), **_collector_auth_headers()}, timeout=5.0)
                     self.send_response(resp.status_code)
                     for k, v in resp.headers.items():
                         if k.lower() not in ('content-encoding', 'transfer-encoding', 'content-length'):
@@ -187,9 +192,10 @@ def _start_static_server(ui_dist_path: Path, cfg) -> int:
     server_thread = threading.Thread(target=run_server, daemon=True)
     server_thread.start()
     
-    # Store thread ID as "pid" (not perfect but works for our use case)
-    fake_pid = server_thread.ident or 99999
-    write_pid("ui", fake_pid)
+    # The dashboard is served by a thread of this `qobserva up` process, so this process's
+    # pid is what `qobserva down` (run from another terminal) must stop.
+    ui_pid = os.getpid()
+    write_pid("ui", ui_pid)
     time.sleep(2)  # Give server more time to start and bind
     
     # Verify server is actually listening
@@ -202,7 +208,19 @@ def _start_static_server(ui_dist_path: Path, cfg) -> int:
         console.print(f"[yellow]UI dist path:[/yellow] {ui_dist_path}")
         console.print(f"[yellow]UI dist exists:[/yellow] {ui_dist_path.exists()}")
     
-    return fake_pid
+    return ui_pid
+
+def port_in_use(host: str, port: int) -> bool:
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.5)
+        return s.connect_ex((host, port)) == 0
+
+def qobserva_collector_running(host: str, port: int) -> bool:
+    try:
+        return httpx.get(f"http://{host}:{port}/v1/health", timeout=1.5).json().get("status") == "ok"
+    except Exception:
+        return False
 
 def wait_for_collector(timeout_s: float = 15.0) -> bool:
     cfg = load_config()
@@ -221,6 +239,10 @@ def wait_for_collector(timeout_s: float = 15.0) -> bool:
 def stop_pid(name: str):
     pid = read_pid(name)
     if not pid:
+        return
+    if pid == os.getpid():
+        # Ctrl+C in `qobserva up`: this process is exiting anyway.
+        clear_pid(name)
         return
     try:
         os.kill(pid, 15)

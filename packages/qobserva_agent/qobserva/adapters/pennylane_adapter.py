@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import numbers
 from typing import Any, Dict
 from .base import Adapter, AdapterContext
 from .version_utils import get_sdk_version
@@ -23,7 +24,7 @@ class PennyLaneAdapter(Adapter):
                 pass
         
         # Handle numeric/array results (expectations, energies)
-        if isinstance(obj, (float, int, list, tuple)):
+        if isinstance(obj, (numbers.Real, list, tuple)):
             return True
         
         # Handle dict results (counts dict from qml.counts())
@@ -37,7 +38,7 @@ class PennyLaneAdapter(Adapter):
             
             # Check if all values are numeric (counts dict)
             try:
-                if all(isinstance(v, (int, float)) for v in obj.values()):
+                if all(isinstance(v, numbers.Real) for v in obj.values()):
                     # This looks like a counts dict - match it
                     return True
             except Exception:
@@ -57,7 +58,7 @@ class PennyLaneAdapter(Adapter):
         # Handle dict results (most common for PennyLane - counts dict)
         if isinstance(obj, dict):
             # Extract shots from counts dict (sum of all values)
-            if all(isinstance(v, (int, float)) for v in obj.values()):
+            if all(isinstance(v, numbers.Real) for v in obj.values()):
                 shots = int(sum(obj.values())) or 1
                 # This is a counts dict - create histogram
                 histogram = {str(k): int(v) for k, v in obj.items()}
@@ -128,7 +129,7 @@ class PennyLaneAdapter(Adapter):
         if not provider:
             provider = "local_sim"  # Default for PennyLane when unknown
 
-        if isinstance(obj, (float, int)):
+        if isinstance(obj, numbers.Real):
             return {
                 "sdk": {"name": "pennylane", "version": get_sdk_version("pennylane")},
                 "backend": {"provider": provider, "name": backend_name},
@@ -136,7 +137,7 @@ class PennyLaneAdapter(Adapter):
                 "artifacts": {"result_type": "energies", "energies": {"value": float(obj), "stderr": None}},
             }
         if isinstance(obj, (list, tuple)):
-            exps = [{"operator": "unknown", "value": float(v), "stderr": None} for v in obj if isinstance(v, (float, int))]
+            exps = [{"operator": "unknown", "value": float(v), "stderr": None} for v in obj if isinstance(v, numbers.Real)]
             return {
                 "sdk": {"name": "pennylane", "version": get_sdk_version("pennylane")},
                 "backend": {"provider": provider, "name": backend_name},

@@ -46,7 +46,8 @@ class BraketAdapter(Adapter):
                             backend_name = parts[-1]
                             # Determine provider from ARN structure
                             if "/quantum-simulator/" in device_arn or "/simulator/" in device_arn:
-                                provider = "local_sim"
+                                # SV1/DM1/TN1 are AWS-managed (billed) cloud simulators, not local ones.
+                                provider = "aws_braket"
                             elif "/qpu/" in device_arn:
                                 # Extract provider from ARN (e.g., ionq, rigetti, oqc)
                                 if len(parts) >= 2:

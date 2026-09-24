@@ -1,8 +1,12 @@
 """D-Wave Ocean example (BYOE).
 
-Install:
+Install (from PyPI):
+  pip install qobserva "qobserva-agent[dwave]"
+  qobserva up        # starts the collector + dashboard at http://localhost:3000
+  python dwave_example.py
+
+Install (from a source checkout):
   pip install -e packages/qobserva_agent[dwave]
-  pip install --upgrade "dimod>=0.12.20"
 
 This example uses dimod ExactSolver (dimod 0.12.21 / 2026).
 No D-Wave cloud required - runs locally.
@@ -26,7 +30,10 @@ import dimod
     benchmark_params={
         "problem_type": "qubo",
         "num_variables": 3,
-    }
+    },
+    # A SampleSet doesn't say which sampler produced it; ExactSolver runs locally.
+    backend="ExactSolver",
+    provider="local_sim",
 )
 def run():
     """Solve a simple QUBO problem using D-Wave ExactSolver."""
