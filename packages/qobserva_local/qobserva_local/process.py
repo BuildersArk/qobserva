@@ -8,10 +8,11 @@ from pathlib import Path
 from typing import List, Optional
 
 import httpx
+import psutil
 from rich.console import Console
 
 from .config import load_config
-from .pids import write_pid, read_pid, clear_pid, is_running
+from .pids import write_pid, clear_pid, qobserva_process
 
 console = Console()
 
@@ -27,12 +28,8 @@ def _collector_auth_headers() -> dict:
     token = os.getenv("QOBSERVA_LOCAL_TOKEN")
     return {"Authorization": f"Bearer {token}"} if token else {}
 
-def start_collector_native() -> int:
+def start_collector_native() -> subprocess.Popen:
     cfg = load_config()
-    existing = read_pid("collector")
-    if is_running(existing):
-        console.print(f"[yellow]Collector already running (pid {existing}).[/yellow]")
-        return existing  # type: ignore
 
     # Use the entry point directly, or call uvicorn on the app
     # Option 1: Use entry point (if installed): cmd = ["qobserva-collector", "serve", "--host", cfg.collector_host, "--port", str(cfg.collector_port)]
@@ -52,14 +49,14 @@ def start_collector_native() -> int:
         # This allows us to see debug output
     )
     write_pid("collector", p.pid)
-    return p.pid
+    return p
 
 def start_ui_native() -> int:
     cfg = load_config()
-    existing = read_pid("ui")
-    if is_running(existing):
-        console.print(f"[yellow]UI already running (pid {existing}).[/yellow]")
-        return existing  # type: ignore
+    existing = qobserva_process("ui")
+    if existing is not None and existing.pid != os.getpid():
+        console.print(f"[yellow]UI already running (pid {existing.pid}).[/yellow]")
+        return existing.pid
 
     return start_react_ui(cfg)
 
@@ -123,9 +120,16 @@ def _start_static_server(ui_dist_path: Path, cfg) -> int:
     """Start HTTP server for static files (PyPI install)."""
     # Use Python's http.server (built-in, no extra dependencies)
     import http.server
-    import socketserver
     import threading
-    
+
+    class DashboardServer(http.server.ThreadingHTTPServer):
+        # One thread per connection: a single idle browser connection (e.g. a preconnect
+        # that never sends a request) must not block every other request.
+        daemon_threads = True
+        # Keep the socketserver default: on Windows, address reuse would let a second
+        # server bind the same port.
+        allow_reuse_address = False
+
     class SPAHandler(http.server.SimpleHTTPRequestHandler):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, directory=str(ui_dist_path), **kwargs)
@@ -182,7 +186,7 @@ def _start_static_server(ui_dist_path: Path, cfg) -> int:
     
     def run_server():
         try:
-            with socketserver.TCPServer((cfg.ui_host, cfg.ui_port), SPAHandler) as httpd:
+            with DashboardServer((cfg.ui_host, cfg.ui_port), SPAHandler) as httpd:
                 console.print(f"[green]Static server started[/green] @ http://{cfg.ui_host}:{cfg.ui_port}")
                 httpd.serve_forever()
         except Exception as e:
@@ -222,36 +226,58 @@ def qobserva_collector_running(host: str, port: int) -> bool:
     except Exception:
         return False
 
-def wait_for_collector(timeout_s: float = 15.0) -> bool:
+def _process_tree_pids(pid: int) -> set[int]:
+    """pid plus its descendants (on Windows a venv's python.exe runs the real interpreter as a child)."""
+    try:
+        return {pid, *(c.pid for c in psutil.Process(pid).children(recursive=True))}
+    except psutil.Error:
+        return {pid}
+
+def wait_for_collector(proc: subprocess.Popen, timeout_s: float = 30.0) -> str:
+    """
+    Wait until the collector *this* `qobserva up` started answers its health check.
+
+    Returns "ok", "exited" (the process ended, e.g. another program took the port first),
+    or "timeout". A different collector answering on the port does not count.
+    """
     cfg = load_config()
-    url = f"http://{cfg.collector_host}:{cfg.collector_port}/v1/runs"
+    url = f"http://{cfg.collector_host}:{cfg.collector_port}/v1/health"
     t0 = time.time()
     while time.time() - t0 < timeout_s:
+        if proc.poll() is not None:
+            return "exited"
         try:
-            r = httpx.get(url, timeout=1.5)
-            if r.status_code in (200, 401, 403):  # token may be enabled
-                return True
+            health = httpx.get(url, timeout=1.5).json()
+            if health.get("status") == "ok" and health.get("pid") in _process_tree_pids(proc.pid):
+                return "ok"
         except Exception:
             pass
         time.sleep(0.25)
-    return False
+    return "exited" if proc.poll() is not None else "timeout"
 
-def stop_pid(name: str):
-    pid = read_pid(name)
-    if not pid:
-        return
-    if pid == os.getpid():
-        # Ctrl+C in `qobserva up`: this process is exiting anyway.
-        clear_pid(name)
-        return
-    try:
-        os.kill(pid, 15)
-        time.sleep(0.5)
-    except Exception:
-        pass
-    if is_running(pid):
-        try:
-            os.kill(pid, 9)
-        except Exception:
-            pass
+def stop_pid(name: str) -> bool:
+    """Stop the QObserva process recorded in a pid file. Returns True if one was stopped."""
+    proc = qobserva_process(name)
     clear_pid(name)
+    if proc is None:
+        # No pid file, the process already ended, or the pid now belongs to another program.
+        return False
+    if proc.pid == os.getpid():
+        # Ctrl+C in `qobserva up`: this process is exiting anyway.
+        return False
+    try:
+        procs = [proc, *proc.children(recursive=True)]
+    except psutil.Error:
+        procs = [proc]
+    for p in procs:
+        try:
+            p.terminate()
+        except psutil.Error:
+            pass
+    _, alive = psutil.wait_procs(procs, timeout=3)
+    for p in alive:
+        try:
+            p.kill()
+        except psutil.Error:
+            pass
+    return True

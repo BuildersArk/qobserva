@@ -1,0 +1,41 @@
+name: Security
+# Code scanning (CodeQL) and a review of dependency changes in PRs. Both are free for
+# public repositories only, so the jobs run in the public BuildersArk/qobserva repo.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 7 * * 1"   # Mondays 07:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  codeql:
+    if: github.repository == 'BuildersArk/qobserva'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [python, javascript-typescript]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+      - uses: github/codeql-action/analyze@v3
+
+  dependency-review:
+    if: github.repository == 'BuildersArk/qobserva' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          # Fail only on known high/critical vulnerabilities in newly added dependencies.
+          fail-on-severity: high

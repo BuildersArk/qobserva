@@ -4,6 +4,18 @@ import react from '@vitejs/plugin-react'
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      output: {
+        // Split large libraries into their own cached chunks (keeps each under 500 kB).
+        manualChunks: {
+          react: ['react', 'react-dom', 'react-router-dom'],
+          charts: ['recharts'],
+          vendor: ['@tanstack/react-query', 'axios', 'date-fns', 'lucide-react', 'clsx'],
+        },
+      },
+    },
+  },
   server: {
     port: 3000,
     host: '0.0.0.0', // Allow external connections (needed for Docker)

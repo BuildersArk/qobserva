@@ -1,0 +1,43 @@
+# Weekly dependency update PRs. Minor and patch updates are grouped into one PR per
+# ecosystem to keep the noise down; major updates get their own PRs. CI runs on each PR.
+version: 2
+updates:
+  # Python packages. These are libraries, so their dependency ranges are only widened
+  # when a new release falls outside them (e.g. fastapi 1.0 vs "<1.0.0"); the weekly
+  # scheduled CI run is what tests against the newest release of everything.
+  - package-ecosystem: pip
+    directories:
+      - "/packages/qobserva"
+      - "/packages/qobserva_agent"
+      - "/packages/qobserva_collector"
+      - "/packages/qobserva_local"
+      - "/tests"
+    schedule:
+      interval: weekly
+      day: monday
+    versioning-strategy: widen
+    open-pull-requests-limit: 5
+    groups:
+      python-minor-patch:
+        update-types: [minor, patch]
+
+  # React dashboard (package.json + package-lock.json)
+  - package-ecosystem: npm
+    directory: "/packages/qobserva_ui_react"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]
+
+  # Versions of the GitHub Actions used in .github/workflows
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      github-actions:
+        patterns: ["*"]

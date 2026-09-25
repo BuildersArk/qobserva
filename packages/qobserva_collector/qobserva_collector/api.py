@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 import os
 from importlib import metadata
 from typing import Any, Dict, Optional
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from .config import LOCAL_ORIGIN_REGEX, is_allowed_origin, load_config
@@ -17,6 +19,7 @@ from .storage import (
     store_analysis_bundle, load_analysis_bundle,
 )
 from .analysis import compute_metrics_and_insights
+from .summary import dump_summary, run_algorithm, run_summary, upgrade_schema
 
 def _dist_version(dist_name: str) -> str:
     try:
@@ -50,6 +53,7 @@ def create_app() -> FastAPI:
         return await call_next(request)
 
     Base.metadata.create_all(bind=get_engine())
+    upgrade_schema(get_engine())
 
     def get_db():
         db = SessionLocal()
@@ -136,6 +140,8 @@ def create_app() -> FastAPI:
             shots=int(exec_.get("shots") or 0),
             artifact_ref=artifact_ref,
             analysis_ref=analysis_ref,
+            algorithm=run_algorithm(event),
+            summary=dump_summary(run_summary(event, analysis)),
         )
         db.add(rec)
         db.commit()
@@ -151,11 +157,10 @@ def create_app() -> FastAPI:
         end_date: str | None = None,
         algorithm: str | None = None,
         limit: int = 200,
+        include_summary: bool = False,
         db: Session = Depends(get_db)
     ):
         q = db.query(Run)
-        initial_count = q.count()
-        
         if project:
             q = q.filter(Run.project == project)
         if provider:
@@ -166,32 +171,28 @@ def create_app() -> FastAPI:
             q = q.filter(Run.created_at >= start_date)
         if end_date:
             q = q.filter(Run.created_at <= end_date)
-        
-        rows = q.order_by(Run.id.desc()).limit(limit * 2 if algorithm else limit).all()  # Get more if filtering by algorithm
-        
-        # Filter by algorithm tag if provided (requires loading event bundles)
         if algorithm:
-            filtered_rows = []
-            for r in rows:
-                try:
-                    event = load_event_bundle(r.artifact_ref)
-                    tags = event.get("tags", {})
-                    if tags.get("algorithm") == algorithm:
-                        filtered_rows.append(r)
-                except Exception:
-                    continue
-            rows = filtered_rows[:limit]
+            q = q.filter(Run.algorithm == algorithm)
 
-        return [{
-            "run_id": r.run_id,
-            "event_id": r.event_id,
-            "created_at": r.created_at,
-            "project": r.project,
-            "provider": r.provider,
-            "backend_name": r.backend_name,
-            "status": r.status,
-            "shots": r.shots,
-        } for r in rows]
+        rows = q.order_by(Run.id.desc()).limit(limit).all()
+
+        def row(r: Run) -> Dict[str, Any]:
+            d = {
+                "run_id": r.run_id,
+                "event_id": r.event_id,
+                "created_at": r.created_at,
+                "project": r.project,
+                "provider": r.provider,
+                "backend_name": r.backend_name,
+                "status": r.status,
+                "shots": r.shots,
+            }
+            if include_summary:
+                d["algorithm"] = r.algorithm
+                d["summary"] = json.loads(r.summary) if r.summary else None
+            return d
+
+        return [row(r) for r in rows]
 
     @app.get("/v1/runs/{run_id}", dependencies=[Depends(auth)])
     def get_run(run_id: str, db: Session = Depends(get_db)):
@@ -218,8 +219,8 @@ def create_app() -> FastAPI:
     
     @app.get("/v1/health")
     def health():
-        """Health check endpoint."""
-        return {"status": "ok"}
+        """Health check endpoint. pid lets `qobserva up` confirm it reached the collector it started."""
+        return {"status": "ok", "pid": os.getpid()}
     
     @app.get("/v1/settings", dependencies=[Depends(auth)])
     def get_settings():
@@ -246,36 +247,15 @@ def create_app() -> FastAPI:
         limit: int = 1000,
         db: Session = Depends(get_db)
     ):
-        """Get list of unique algorithms from runs that have algorithm tags."""
-        algorithms = set()
-        rows = db.query(Run).order_by(Run.id.desc()).limit(limit).all()
-        
-        for r in rows:
-            try:
-                event = load_event_bundle(r.artifact_ref)
-                tags = event.get("tags", {})
-                algo = tags.get("algorithm")
-                if algo:
-                    algorithms.add(algo)
-            except Exception as e:
-                print(f"  Error loading event for run {r.run_id}: {e}")
-                continue
-        
-        # Return sorted list with counts
-        algo_list = []
-        for algo in sorted(algorithms):
-            # Count runs for this algorithm
-            count = 0
-            for r in rows:
-                try:
-                    event = load_event_bundle(r.artifact_ref)
-                    tags = event.get("tags", {})
-                    if tags.get("algorithm") == algo:
-                        count += 1
-                except:
-                    continue
-            algo_list.append({"name": algo, "count": count})
-        
-        return {"algorithms": algo_list}
+        """Get list of unique algorithms (with run counts) among the latest `limit` runs."""
+        latest = db.query(Run.id, Run.algorithm).order_by(Run.id.desc()).limit(limit).subquery()
+        rows = (
+            db.query(latest.c.algorithm, func.count())
+            .filter(latest.c.algorithm.isnot(None))
+            .group_by(latest.c.algorithm)
+            .order_by(latest.c.algorithm)
+            .all()
+        )
+        return {"algorithms": [{"name": name, "count": count} for name, count in rows]}
 
     return app

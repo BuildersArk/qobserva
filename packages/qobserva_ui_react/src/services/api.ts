@@ -16,6 +16,18 @@ export interface Run {
   backend_name: string;
   status: string;
   shots: number;
+  // Present when requested with includeSummary (collector 0.1.5+)
+  algorithm?: string | null;
+  summary?: RunSummary | null;
+}
+
+// Per-run fields the dashboard aggregates across many runs, served with the run list
+// so charts don't have to fetch every run's event and analysis.
+export interface RunSummary {
+  sdk?: string | null;
+  runtime_ms?: number | null;
+  metrics: Record<string, number>;
+  benchmark_params: Record<string, number>;
 }
 
 export interface Algorithm {
@@ -83,6 +95,7 @@ export const apiService = {
     endDate?: string;
     algorithm?: string;
     limit?: number;
+    includeSummary?: boolean;
   }): Promise<Run[]> => {
     // Convert camelCase to snake_case for backend API
     const apiParams: any = {};
@@ -99,6 +112,7 @@ export const apiService = {
     }
     if (params?.algorithm) apiParams.algorithm = params.algorithm;
     if (params?.limit) apiParams.limit = params.limit;
+    if (params?.includeSummary) apiParams.include_summary = true;
 
     const response = await api.get('/runs', { params: apiParams });
     return response.data;

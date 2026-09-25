@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Optional
+
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy import String, Integer, Text
 from .db import Base
@@ -19,3 +21,8 @@ class Run(Base):
 
     artifact_ref: Mapped[str] = mapped_column(Text)
     analysis_ref: Mapped[str] = mapped_column(Text)
+
+    # tags.algorithm, indexed for the Algorithm Analytics page
+    algorithm: Mapped[Optional[str]] = mapped_column(String(200), index=True, nullable=True)
+    # JSON from summary.run_summary(): per-run fields the dashboard charts aggregate
+    summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

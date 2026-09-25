@@ -1,5 +1,13 @@
 name: CI
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Weekly run against the newest SDK releases (pip installs the latest of each),
+  # so an SDK change that breaks an adapter shows up before users report it.
+  schedule:
+    - cron: "0 6 * * 1"   # Mondays 06:00 UTC
+  workflow_dispatch:
 jobs:
   tests:
     runs-on: ${{ matrix.os }}
@@ -20,7 +28,7 @@ jobs:
         run: |
           python -m pip install -U pip
           pip install -e packages/qobserva_agent -e packages/qobserva_collector -e packages/qobserva_local -e packages/qobserva
-          pip install pytest "tomli; python_version < '3.11'"
+          pip install -r tests/requirements.txt
       - name: Run tests
         run: pytest tests -q
 
@@ -31,13 +39,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install packages and SDKs (Qiskit, Cirq, PennyLane, D-Wave dimod)
+      - name: Install packages and SDKs (Qiskit, Braket, Cirq, PennyLane, D-Wave dimod)
         run: |
           python -m pip install -U pip
           pip install -e packages/qobserva_agent -e packages/qobserva_collector -e packages/qobserva_local -e packages/qobserva
-          pip install pytest qiskit qiskit-aer qiskit-ibm-runtime cirq pennylane dimod
+          pip install -r tests/requirements.txt qiskit qiskit-aer qiskit-ibm-runtime amazon-braket-sdk cirq pennylane dimod
       - name: Run SDK adapter tests
-        run: pytest tests/agent/test_qiskit_backend_labels.py tests/agent/test_cirq_adapter.py tests/agent/test_pennylane_adapter.py tests/agent/test_dwave_adapter.py -v
+        run: pytest tests/agent/test_qiskit_backend_labels.py tests/agent/test_braket_adapter.py tests/agent/test_cirq_adapter.py tests/agent/test_pennylane_adapter.py tests/agent/test_dwave_adapter.py -v
 
   pyquil-adapter:
     runs-on: ubuntu-latest
@@ -54,7 +62,7 @@ jobs:
         run: |
           python -m pip install -U pip
           pip install -e packages/qobserva_agent -e packages/qobserva_collector -e packages/qobserva_local -e packages/qobserva
-          pip install pytest pyquil
+          pip install -r tests/requirements.txt pyquil
       - name: Run pyQuil adapter tests
         run: |
           for i in $(seq 1 30); do (echo > /dev/tcp/127.0.0.1/5000) 2>/dev/null && (echo > /dev/tcp/127.0.0.1/5555) 2>/dev/null && break; sleep 1; done
