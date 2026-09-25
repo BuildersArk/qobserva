@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.1.7 (qobserva 0.1.7 · qobserva-agent 0.1.2 · qobserva-collector 0.1.5 · qobserva-local 0.1.4)
+
+qobserva-agent is unchanged (still 0.1.2).
+
+### Dashboard speed
+- **Collector:** each run's SDK, runtime, benchmark parameters and the analysis metrics used by charts are stored in an indexed summary when the run arrives. `GET /v1/runs?include_summary=true` returns them with the run list. Without the parameter, the response is unchanged.
+- **Dashboard:** Run Analytics and Algorithm Analytics read those summaries instead of fetching each run's event and analysis. With 18 runs, Run Analytics went from 110 API requests to 2, and the pages render as soon as the run list arrives. Charts look the same and show the same data.
+- **Collector:** filtering runs by algorithm and `GET /v1/algorithms` use the database (indexed `algorithm` column) instead of reading every stored bundle from disk. The algorithm filter previously looked at only the latest `2 × limit` runs, so it could miss older matches.
+- **Upgrade:** existing data folders are upgraded automatically the first time collector 0.1.5 starts. It adds the new columns and indexes existing runs once from their stored bundles. Nothing is deleted.
+- **Dashboard server:** the built-in dashboard server (pip installs) now handles connections concurrently. Before, one idle browser connection could block every other request, so pages sometimes stayed on "Loading...".
+- **Dashboard bundle:** the logo shipped at 1536×1024 (2.2 MB) and the tab icon embedded a 2.9 MB image. Both are now sized for how they're displayed (62 KB and 26 KB). JavaScript is split into cached chunks, so no chunk is over 500 kB. The `qobserva-local` wheel went from 9.4 MB to 0.9 MB.
+
+### Fixes
+- **Dashboard:** the "Circuit Depth vs Success" chart read a metric name the collector never produces (`qc.circuit.depth.post` instead of `qc.circuit.depth_post`), so it always said "No data available". The name is fixed; the chart fills in once runs record a transpiled circuit depth, which the SDK adapters don't do yet.
+- **Algorithm Analytics:** with more than 100 runs for an algorithm, the SDK comparison fell back to provider names (e.g. `local_sim`) and showed no runtimes. It now uses each run's SDK and runtime at any count.
+- **`qobserva up`:** `up` now waits for the collector *it* started. Before, if another program took the port between the pre-check and startup, `up` reported "Collector running" because the other program answered the health check. Now it reports that the collector exited and returns an error. `/v1/health` includes the collector's pid for this check.
+- **`qobserva down`:** `down` checks that each pid file still points at the QObserva process that wrote it (pid plus process start time) before stopping it. A stale pid file whose number now belongs to another program is removed and that program is left alone. `down` also stops the process's children (e.g. the dev-mode dashboard) and says when nothing was running. `qobserva-local` now depends on `psutil` for this.
+- **Examples:** removed `basic_counts_dict.py`. It recorded a hardcoded counts dict, which the PennyLane adapter labeled as a PennyLane run.
+- **PennyLane example:** uses `qml.set_shots` (PennyLane 0.42+) instead of device shots, which PennyLane has deprecated.
+
+### Testing and CI
+- New tests: run summaries and algorithm counts, upgrading a 0.1.4 database, pid reuse in `qobserva down`, the `qobserva up` race, the dashboard server with an idle connection, and a Braket adapter test on the real `LocalSimulator`.
+- `tests/requirements.txt` lists test dependencies, including `httpx2`, which Starlette 1.x's TestClient now expects.
+- CI runs on pushes to `main`, on pull requests, and every Monday against the newest SDK releases, so an SDK update that breaks an adapter shows up early. Braket is now part of the SDK job.
+- Dependabot opens weekly grouped PRs for Python dependencies, the dashboard's npm packages and GitHub Actions.
+- A Security workflow (CodeQL and dependency review) runs in the public repository.
+
 ## 0.1.6 (qobserva 0.1.6 · qobserva-agent 0.1.2 · qobserva-collector 0.1.4 · qobserva-local 0.1.3)
 
 ### Security and privacy

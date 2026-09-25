@@ -1,7 +1,5 @@
 import { ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Run } from '../../services/api';
-import { useQuery } from '@tanstack/react-query';
-import { apiService } from '../../services/api';
 import { useNavigate } from 'react-router-dom';
 
 interface Props {
@@ -10,25 +8,12 @@ interface Props {
 
 export default function DepthVsSuccess({ runs }: Props) {
   const navigate = useNavigate();
-  // Fetch analysis data for each run to get depth metrics
-  const runAnalyses = useQuery({
-    queryKey: ['runs-analyses', runs.map(r => r.run_id)],
-    queryFn: async () => {
-      const pairs = await Promise.all(
-        runs.slice(0, 50).map(async (run) => {
-          const res = await apiService.getRun(run.project, run.run_id).catch(() => null);
-          if (!res) return null;
-          return { run, res };
-        })
-      );
-      return pairs.filter(Boolean) as Array<{ run: Run; res: any }>;
-    },
-  });
-
-  const data = runAnalyses.data
-    ?.map(({ run, res }) => {
-      const depth = res?.analysis?.metrics?.['qc.circuit.depth.post'];
-      const success = res?.analysis?.metrics?.['qc.quality.success_probability'];
+  // Metrics come with the run list (include_summary), so no per-run requests are needed.
+  const data = runs
+    .slice(0, 50)
+    .map((run) => {
+      const depth = run.summary?.metrics?.['qc.circuit.depth_post'];
+      const success = run.summary?.metrics?.['qc.quality.success_probability'];
       if (depth && success !== undefined) {
         return {
           depth,
@@ -40,7 +25,7 @@ export default function DepthVsSuccess({ runs }: Props) {
       }
       return null;
     })
-    .filter(Boolean) || [];
+    .filter(Boolean);
 
   if (data.length === 0) {
     return <div className="text-center py-12 text-dark-text-muted">No data available</div>;

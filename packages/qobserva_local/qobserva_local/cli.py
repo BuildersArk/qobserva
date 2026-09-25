@@ -43,10 +43,16 @@ def up(mode: str = "native"):
                       "(then point your code at the new collector with QOBSERVA_ENDPOINT=http://127.0.0.1:8081/v1/ingest/run-event).")
         raise typer.Exit(1)
 
-    cpid = start_collector_native()
-    ok = wait_for_collector()
-    if ok:
-        console.print(f"[green]Collector running[/green] (pid {cpid}) @ http://{cfg.collector_host}:{cfg.collector_port}")
+    collector = start_collector_native()
+    state = wait_for_collector(collector)
+    if state == "exited":
+        stop_pid("collector")
+        console.print(f"[red]The collector exited before it was ready (exit code {collector.returncode}).[/red] "
+                      f"See the messages above; if port {cfg.collector_port} is now taken by another program, free it "
+                      "or choose another port with QOBSERVA_COLLECTOR_PORT.")
+        raise typer.Exit(1)
+    if state == "ok":
+        console.print(f"[green]Collector running[/green] (pid {collector.pid}) @ http://{cfg.collector_host}:{cfg.collector_port}")
     else:
         console.print("[yellow]Collector started but health-check did not pass yet.[/yellow]")
 
@@ -72,9 +78,11 @@ def down(mode: str = "native"):
 
     # Collector first: when the dashboard is served by the `qobserva up` process itself,
     # stopping "ui" ends that process.
-    stop_pid("collector")
-    stop_pid("ui")
-    console.print("[green]Stopped local processes[/green]")
+    stopped = [name for name in ("collector", "ui") if stop_pid(name)]
+    if stopped:
+        console.print("[green]Stopped local processes[/green]")
+    else:
+        console.print("No running QObserva processes found.")
 
 @app.command()
 def doctor():

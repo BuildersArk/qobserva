@@ -35,11 +35,12 @@ export default function Algorithms({ filters }: Props) {
 
   // Fetch runs for selected algorithm
   const { data: allRuns = [], isLoading: runsLoading } = useQuery({
-    queryKey: ['runs', filters, selectedAlgorithm],
+    queryKey: ['runs', filters, 'algorithm', selectedAlgorithm],
     queryFn: () => apiService.getRuns({ 
       limit: 1000, 
       ...(filters || {}),
       algorithm: selectedAlgorithm || undefined,
+      includeSummary: true,
     }),
     enabled: !!selectedAlgorithm,
   });
@@ -52,49 +53,20 @@ export default function Algorithms({ filters }: Props) {
 
   // Calculate derived values BEFORE conditional returns
   const algorithmRuns = allRuns;
-  const runIds = useMemo(() => algorithmRuns.map(r => r.run_id), [algorithmRuns]);
-  
-  // Fetch event data for SDK extraction (ALWAYS call hook, conditionally enable)
-  const { data: runEvents } = useQuery({
-    queryKey: ['run-events', runIds],
-    queryFn: async () => {
-      const events = new Map<string, any>();
-      // Load event data for a sample of runs (limit to avoid performance issues)
-      const sampleRuns = algorithmRuns.slice(0, 100);
-      await Promise.all(
-        sampleRuns.map(async (run) => {
-          try {
-            const eventData = await apiService.getRun(run.project, run.run_id);
-            events.set(run.run_id, eventData.event);
-          } catch (error) {
-            console.error(`Error loading event for ${run.run_id}:`, error);
-          }
-        })
-      );
-      return events;
-    },
-    enabled: algorithmRuns.length > 0 && algorithmRuns.length <= 100, // Only fetch if reasonable number
-  });
+  // SDK, runtime and benchmark params come with the run list (include_summary),
+  // so no per-run requests are needed.
 
   // --- All useMemo hooks MUST run before any conditional return ---
   const sdkComparison = useMemo(() => {
     const sdkMap = new Map<string, { success: number; total: number; totalRuntime: number; totalShots: number }>();
     algorithmRuns.forEach(run => {
-      let sdk = run.provider;
-      if (runEvents) {
-        const event = runEvents.get(run.run_id);
-        if (event?.software?.sdk?.name) sdk = event.software.sdk.name;
-        else if (event?.tags?.sdk) sdk = event.tags.sdk;
-      }
+      const sdk = run.summary?.sdk || run.provider;
       if (!sdkMap.has(sdk)) sdkMap.set(sdk, { success: 0, total: 0, totalRuntime: 0, totalShots: 0 });
       const stats = sdkMap.get(sdk)!;
       stats.total++;
       if (run.status === 'success') stats.success++;
       stats.totalShots += run.shots;
-      if (runEvents) {
-        const event = runEvents.get(run.run_id);
-        if (event?.execution?.runtime_ms) stats.totalRuntime += event.execution.runtime_ms;
-      }
+      if (run.summary?.runtime_ms) stats.totalRuntime += run.summary.runtime_ms;
     });
     return Array.from(sdkMap.entries()).map(([sdk, stats]) => ({
       sdk,
@@ -103,7 +75,7 @@ export default function Algorithms({ filters }: Props) {
       avgRuntime: stats.total > 0 && stats.totalRuntime > 0 ? (stats.totalRuntime / stats.total) : 0,
       totalRuns: stats.total,
     })).sort((a, b) => b.totalRuns - a.totalRuns);
-  }, [algorithmRuns, runEvents]);
+  }, [algorithmRuns]);
 
   const performanceOverTime = useMemo(() => {
     const timeMap = new Map<string, { success: number; total: number }>();
@@ -139,12 +111,11 @@ export default function Algorithms({ filters }: Props) {
   // const avgRuntime = useMemo(() => 0, [algorithmRuns]);
 
   const algorithmMetrics = useMemo(() => {
-    if (!runEvents || algorithmRuns.length === 0) return null;
+    if (algorithmRuns.length === 0) return null;
     const metrics: any = { vqe: { energies: [] as number[] }, grover: { targetSuccessRates: [] as number[] }, optimization: { approximationRatios: [] as number[] } };
     algorithmRuns.slice(0, 50).forEach(run => {
-      const event = runEvents.get(run.run_id);
-      if (!event?.program?.benchmark_params) return;
-      const params = event.program.benchmark_params;
+      const params = run.summary?.benchmark_params;
+      if (!params) return;
       const algo = selectedAlgorithm.toLowerCase();
       if (algo.includes('vqe') && params.energy !== undefined) metrics.vqe.energies.push(params.energy);
       if (algo.includes('grover') && params.expected_success_rate !== undefined) metrics.grover.targetSuccessRates.push(params.expected_success_rate);
@@ -154,7 +125,7 @@ export default function Algorithms({ filters }: Props) {
     });
     const hasMetrics = metrics.vqe.energies.length > 0 || metrics.grover.targetSuccessRates.length > 0 || metrics.optimization.approximationRatios.length > 0;
     return hasMetrics ? metrics : null;
-  }, [algorithmRuns, runEvents, selectedAlgorithm]);
+  }, [algorithmRuns, selectedAlgorithm]);
 
   const overallSuccessRate = overallRuns.length > 0
     ? (overallRuns.filter(r => r.status === 'success').length / overallRuns.length * 100)

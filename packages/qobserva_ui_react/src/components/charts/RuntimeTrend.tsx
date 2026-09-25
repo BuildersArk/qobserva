@@ -1,8 +1,7 @@
 import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { apiService, Run } from '../../services/api';
+import { Run } from '../../services/api';
 import { format, parseISO, startOfDay } from 'date-fns';
 
 interface Props {
@@ -28,40 +27,13 @@ function toQuery(base?: Props['baseFilters'], extra?: Record<string, string | un
 
 export default function RuntimeTrend({ runs, baseFilters }: Props) {
   const navigate = useNavigate();
-  // Fetch full run data for a sample to get runtime metrics
-  const sampleRuns = runs.slice(0, 50); // Sample first 50 for performance
-  
-  const runDetails = useQuery({
-    queryKey: ['run-details-analytics', sampleRuns.map(r => r.run_id)],
-    queryFn: async () => {
-      const details = await Promise.all(
-        sampleRuns.map(async (run) => {
-          try {
-            const data = await apiService.getRun(run.project, run.run_id);
-            return {
-              run_id: run.run_id,
-              created_at: run.created_at,
-              runtime_ms: data.event.execution.runtime_ms || 0,
-              provider: run.provider,
-            };
-          } catch {
-            return null;
-          }
-        })
-      );
-      return details.filter(Boolean);
-    },
-    enabled: sampleRuns.length > 0,
-  });
-
+  // Runtime comes with the run list (include_summary) for a sample of the latest 50 runs
   const data = useMemo(() => {
-    if (!runDetails.data) return [];
-    
     // Group by date and calculate average runtime
     const grouped = new Map<string, { total: number; count: number }>();
     
-    runDetails.data.forEach((detail: any) => {
-      if (!detail) return;
+    runs.slice(0, 50).forEach((run) => {
+      const detail = { created_at: run.created_at, runtime_ms: run.summary?.runtime_ms || 0 };
       const date = format(startOfDay(parseISO(detail.created_at)), 'yyyy-MM-dd');
       
       if (!grouped.has(date)) {
@@ -80,11 +52,7 @@ export default function RuntimeTrend({ runs, baseFilters }: Props) {
         avgRuntime: stats.count > 0 ? stats.total / stats.count : 0,
       }))
       .sort((a, b) => a.dateIso.localeCompare(b.dateIso));
-  }, [runDetails.data]);
-
-  if (runDetails.isLoading) {
-    return <div className="text-center py-12 text-dark-text-muted">Loading runtime data...</div>;
-  }
+  }, [runs]);
 
   if (data.length === 0) {
     return <div className="text-center py-12 text-dark-text-muted">No runtime data available</div>;

@@ -38,8 +38,8 @@ export default function Analytics({ filters }: Props) {
   const navigate = useNavigate();
   
   const { data: runs = [], isLoading } = useQuery({
-    queryKey: ['runs', filters],
-    queryFn: () => apiService.getRuns({ limit: 1000, ...(filters || {}) }),
+    queryKey: ['runs', filters, 'summary'],
+    queryFn: () => apiService.getRuns({ limit: 1000, ...(filters || {}), includeSummary: true }),
     staleTime: 5000,
   });
 

@@ -5,7 +5,7 @@ from rich.console import Console
 import httpx
 
 from .config import load_config
-from .pids import read_pid, is_running
+from .pids import read_pid, qobserva_process
 
 console = Console()
 
@@ -28,8 +28,8 @@ def run_doctor():
 
     cpid = read_pid("collector")
     upid = read_pid("ui")
-    console.print(f"Collector pid: {cpid} (running={is_running(cpid)})")
-    console.print(f"UI pid: {upid} (running={is_running(upid)})")
+    console.print(f"Collector pid: {cpid} (running={qobserva_process('collector') is not None})")
+    console.print(f"UI pid: {upid} (running={qobserva_process('ui') is not None})")
 
     url = f"http://{cfg.collector_host}:{cfg.collector_port}/v1/runs"
     try:

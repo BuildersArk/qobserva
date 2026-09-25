@@ -20,8 +20,9 @@ def record(collector, monkeypatch):
     return _record
 
 def test_counts_are_recorded(record):
-    dev = qml.device("default.qubit", wires=2, shots=1024)
+    dev = qml.device("default.qubit", wires=2)
 
+    @qml.set_shots(1024)
     @qml.qnode(dev)
     def bell():
         qml.Hadamard(wires=0)

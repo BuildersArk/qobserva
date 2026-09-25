@@ -96,7 +96,6 @@ All examples use proper project names and tags for testing:
 - `pennylane_example.py` - PennyLane with counts dict (project: `pennylane_test`)
 - `pyquil_example.py` - pyQuil with QVM (project: `pyquil_test`)
 - `dwave_example.py` - D-Wave with ExactSolver (project: `dwave_test`)
-- `basic_counts_dict.py` - Plumbing check with a fixed counts dict (no quantum execution; don't use it as benchmark data)
 
 ## Project Names and Tags
 

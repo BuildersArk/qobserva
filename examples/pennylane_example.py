@@ -8,11 +8,11 @@ Install (from PyPI):
 Install (from a source checkout):
   pip install -e packages/qobserva_agent[pennylane]
 
-This example uses PennyLane default.qubit simulator (PennyLane 0.40+ / 2026).
+This example uses PennyLane default.qubit simulator (PennyLane 0.42+ / 2026).
 Returns measurement counts (most common use case).
 
 Version Requirements:
-- pennylane >= 0.40.0
+- pennylane >= 0.42.0 (for qml.set_shots; older versions set shots on the device)
 - Python 3.10+ (works with Python 3.10-3.14)
 
 Limitations:
@@ -34,8 +34,9 @@ import pennylane as qml
 def run():
     """Create and measure a Bell state using PennyLane default.qubit."""
     # Create a 2-qubit device
-    dev = qml.device("default.qubit", wires=2, shots=1024)
+    dev = qml.device("default.qubit", wires=2)
     
+    @qml.set_shots(1024)
     @qml.qnode(dev)
     def bell_circuit():
         # Create Bell state: |00⟩ -> (|00⟩ + |11⟩)/√2
