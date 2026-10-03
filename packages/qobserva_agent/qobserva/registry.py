@@ -69,6 +69,13 @@ def select_adapter(obj: Any, ctx: AdapterContext, adapters: List[Adapter]) -> Ad
     # Step 3: Priority-based matching (for ambiguous cases)
     # This handles cases like plain dicts where multiple adapters could match
     # Examples: {"00": 512, "11": 512} could be PennyLane, Qiskit, or Braket counts
+    # A plain Python value (list, dict, number) says nothing about its SDK. When the sdk tag names an
+    # installed adapter, another SDK's adapter must not claim it (e.g. PennyLane claiming Cirq's
+    # list of expectation values): the tagged SDK's fallback is more honest than a wrong SDK.
+    sdk_tag = (ctx.tags or {}).get("sdk", "").lower()
+    if sdk_tag and any(a.name.lower() == sdk_tag for a in adapters):
+        return None
+
     matches = []
     for a in adapters:
         try:

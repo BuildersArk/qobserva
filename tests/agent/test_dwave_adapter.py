@@ -30,3 +30,15 @@ def test_sampler_passed_as_backend(record):
     solver = dimod.ExactSolver()
     ev = record(lambda: solver.sample(BQM), backend=solver)
     assert ev["backend"] == {"provider": "local_sim", "name": "ExactSolver"}
+
+def test_backend_composite_is_described_by_the_sampler_it_wraps():
+    """backend=EmbeddingComposite(child) names the child that runs the problem, not the composite."""
+    dimod = pytest.importorskip("dimod")
+    samplers = pytest.importorskip("dwave.samplers")
+    system = pytest.importorskip("dwave.system")
+    from qobserva.adapters.dwave_adapter import describe_sampler
+
+    structured = dimod.StructureComposite(samplers.SimulatedAnnealingSampler(), [0, 1], [(0, 1)])
+
+    assert describe_sampler(system.EmbeddingComposite(structured)) == \
+        {"provider": "local_sim", "name": "SimulatedAnnealingSampler"}

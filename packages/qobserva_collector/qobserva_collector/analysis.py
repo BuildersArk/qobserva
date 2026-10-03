@@ -3,13 +3,25 @@ from __future__ import annotations
 import math
 from typing import Any, Dict, List, Optional
 
+def sampled_shots(execution: Dict[str, Any]) -> int:
+    """
+    Shots that were actually sampled. Runs computed exactly (execution.exact, agent 0.1.3+: e.g. a
+    statevector Estimator or Braket shots=0) took none; their execution.shots is 1 only because the
+    event schema requires shots >= 1, which keeps them readable by older collectors.
+    """
+    if execution.get("exact") is True:
+        return 0
+    return int(execution.get("shots") or 0)
+
 def compute_metrics_and_insights(event: Dict[str, Any], baseline: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     metrics: Dict[str, Any] = {}
     insights: List[Dict[str, Any]] = []
 
     exec_ = event.get("execution", {}) or {}
-    shots = int(exec_.get("shots") or 0)
+    shots = sampled_shots(exec_)
     metrics["qc.shots"] = shots
+    if exec_.get("exact") is True:
+        metrics["qc.exact"] = True
 
     if exec_.get("runtime_ms") is not None:
         metrics["qc.time.runtime_ms"] = exec_["runtime_ms"]
@@ -58,6 +70,46 @@ def compute_metrics_and_insights(event: Dict[str, Any], baseline: Optional[Dict[
             if p > 0:
                 ent -= p * math.log2(p)
         metrics["qc.quality.shannon_entropy_bits"] = ent
+
+    # Exact probabilities (qml.probs, Braket probability) when there are no sampled counts
+    probabilities = artifacts.get("probabilities")
+    if not isinstance(counts, dict) and isinstance(probabilities, dict) and isinstance(probabilities.get("values"), dict):
+        ent = 0.0
+        for p in probabilities["values"].values():
+            if isinstance(p, (int, float)) and p > 0:
+                ent -= p * math.log2(p)
+        metrics["qc.quality.shannon_entropy_bits"] = ent
+
+    # Expectation values (Estimator results, expval measurements, Braket expectation/variance)
+    expectations = artifacts.get("expectations")
+    if isinstance(expectations, list):
+        values = [e.get("value") for e in expectations if isinstance(e, dict)]
+        values = [float(v) for v in values if isinstance(v, (int, float)) and not isinstance(v, bool)]
+        if values:
+            metrics["qc.expectation.count"] = len(values)
+            metrics["qc.expectation.mean"] = sum(values) / len(values)
+            if len(values) == 1:
+                metrics["qc.expectation.value"] = values[0]
+        stderrs = [e.get("stderr") for e in expectations if isinstance(e, dict)]
+        stderrs = [abs(float(s)) for s in stderrs if isinstance(s, (int, float)) and not isinstance(s, bool)]
+        if stderrs:
+            metrics["qc.expectation.max_stderr"] = max(stderrs)
+
+    batches = artifacts.get("batches")
+    if isinstance(batches, list) and batches:
+        metrics["qc.batch.count"] = len(batches)
+
+    # D-Wave embedding quality
+    annealing = artifacts.get("annealing")
+    if isinstance(annealing, dict):
+        for key, metric_key in [
+            ("chain_break_fraction", "qc.anneal.chain_break_fraction"),
+            ("max_chain_length", "qc.anneal.max_chain_length"),
+            ("num_physical_qubits", "qc.anneal.physical_qubits"),
+        ]:
+            val = annealing.get(key)
+            if isinstance(val, (int, float)) and not isinstance(val, bool):
+                metrics[metric_key] = val
 
     # Energy metrics (for D-Wave/optimization problems)
     energies = artifacts.get("energies", {})
@@ -133,6 +185,13 @@ def compute_metrics_and_insights(event: Dict[str, Any], baseline: Optional[Dict[
             "severity": "warn"
         })
     
+    if metrics.get("qc.anneal.chain_break_fraction", 0) > 0.1:
+        insights.append({
+            "summary": f"{metrics['qc.anneal.chain_break_fraction']:.1%} of chains broke. Consider raising chain_strength "
+                       f"or finding a shorter embedding (max chain length {metrics.get('qc.anneal.max_chain_length', '?')}).",
+            "severity": "warn"
+        })
+
     # Energy-based insights (for optimization problems)
     if "qc.optimization.energy" in metrics:
         energy = metrics["qc.optimization.energy"]

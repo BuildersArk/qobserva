@@ -20,6 +20,12 @@ class AdapterContext:
     job: Any = None
     # Backend explicitly passed to @observe_run(backend=...): an SDK backend object or a name.
     backend_hint: Any = None
+    # The decorated callable itself. Some SDK callables describe the run (a PennyLane QNode
+    # knows its device and shot vector), which the plain result values do not.
+    function: Any = None
+    # A braket.tracking.Tracker that was running while the function ran (sdk="braket" only);
+    # it records AWS tasks, from which Braket estimates their cost.
+    cost_tracker: Any = None
 
 class Adapter:
     name: str = "base"

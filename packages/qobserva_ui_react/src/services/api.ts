@@ -16,7 +16,9 @@ export interface Run {
   backend_name: string;
   status: string;
   shots: number;
-  // Present when requested with includeSummary (collector 0.1.5+)
+  // Sent with every run by collector 0.1.6+ (algorithm also with includeSummary on 0.1.5)
+  sdk?: string | null;
+  job_id?: string | null;
   algorithm?: string | null;
   summary?: RunSummary | null;
 }
@@ -67,11 +69,39 @@ export interface Event {
     };
     python_version?: string;
   };
+  program?: {
+    circuit_metrics?: CircuitMetrics;
+    circuit?: CircuitText;
+    [key: string]: any;
+  };
   execution: {
     status: string;
     shots: number;
+    exact?: boolean;
     runtime_ms?: number;
     queue_ms?: number;
+    timeline?: {
+      created?: string;
+      running?: string;
+      finished?: string;
+      source?: string;
+    };
+    execution_spans?: {
+      count: number;
+      total_s: number;
+      start?: string;
+      stop?: string;
+      spans?: Array<{ start: string; stop: string; duration_s: number }>;
+    };
+    chunk_timing?: {
+      count: number;
+      total_s: number;
+      chunks: Array<{ start: string; stop: string; duration_s: number; parts?: Array<{ item: number; size: number }> }>;
+    };
+    options?: Record<string, any>;
+    input_options?: Record<string, any>;
+    provider_job?: ProviderJob;
+    resource_usage?: Record<string, any>;
   };
   artifacts: {
     result_type?: string;
@@ -82,7 +112,84 @@ export interface Event {
       value?: number | null;
       stderr?: number | null;
     };
+    expectations?: ExpectationArtifact[];
+    probabilities?: {
+      values: Record<string, number>;
+      truncated?: boolean;
+    };
+    batches?: BatchArtifact[];
+    annealing?: AnnealingArtifact;
+    unrecognized?: { type?: string };
+    pending_job?: { type?: string; job_id?: string | null };
   };
+}
+
+export interface ProviderJob {
+  job_id: string;
+  provider?: string;
+  program?: string;
+  mode?: string;
+  session_id?: string;
+  tags?: string[];
+  items?: number;
+  region?: string;
+  created?: string;
+  usage_estimate_s?: number;
+  private?: boolean;
+  label?: string;
+  problem_data_id?: string;
+  device?: string;
+  arn?: string;
+  // Google Quantum Engine / Quantum Virtual Machine (cirq_google)
+  processor?: string;
+  program_id?: string;
+  status?: string;
+  updated?: string;
+  calibration?: string;
+  virtual?: boolean;
+}
+
+export interface CircuitText {
+  format?: string; // openqasm3 | openqasm2 | quil
+  source?: { text: string; truncated?: boolean; full_length?: number };
+  diagram?: { text: string; truncated?: boolean; full_length?: number };
+  diagram_omitted?: string;
+  from?: string; // decorator | job | qnode
+}
+
+export interface CircuitMetrics {
+  num_qubits?: number;
+  depth_pre?: number;
+  depth_post?: number;
+  two_qubit_gate_count_pre?: number;
+  two_qubit_gate_count_post?: number;
+  gate_counts?: Record<string, number>;
+  source?: string;
+}
+
+export interface ExpectationArtifact {
+  operator: string;
+  value: number;
+  stderr?: number | null;
+  kind?: string;
+}
+
+export interface BatchArtifact {
+  label?: string;
+  params?: Record<string, number | string>;
+  shots?: number;
+  histogram: Record<string, number>;
+}
+
+export interface AnnealingArtifact {
+  chain_break_fraction?: number;
+  max_chain_break_fraction?: number;
+  num_logical_variables?: number;
+  num_physical_qubits?: number;
+  max_chain_length?: number;
+  mean_chain_length?: number;
+  chain_strength?: number;
+  chain_break_method?: string;
 }
 
 export const apiService = {

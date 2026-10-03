@@ -2,9 +2,18 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 
 interface Props {
   counts: Record<string, number>;
+  /** Series name in the tooltip; the defaults describe measurement counts. */
+  valueName?: string;
+  yAxisLabel?: string;
+  formatValue?: (value: number) => string;
 }
 
-export default function CountsChart({ counts }: Props) {
+export default function CountsChart({
+  counts,
+  valueName = 'Count',
+  yAxisLabel = 'Count (Number of Observations)',
+  formatValue = (value: number) => value.toLocaleString(),
+}: Props) {
   const data = Object.entries(counts)
     .sort(([, a], [, b]) => b - a)
     .slice(0, 20)
@@ -37,7 +46,7 @@ export default function CountsChart({ counts }: Props) {
           stroke="#94a3b8"
           tick={{ fill: '#94a3b8', fontSize: 12 }}
           label={{ 
-            value: 'Count (Number of Observations)', 
+            value: yAxisLabel, 
             angle: -90, 
             position: 'insideLeft', 
             fill: '#94a3b8',
@@ -51,7 +60,7 @@ export default function CountsChart({ counts }: Props) {
             borderRadius: '8px',
           }}
           labelStyle={{ color: '#e2e8f0', fontWeight: 'bold' }}
-          formatter={(value: number) => [value.toLocaleString(), 'Count']}
+          formatter={(value: number) => [formatValue(value), valueName]}
         />
         <Bar dataKey="count" fill="#3b82f6" radius={[8, 8, 0, 0]} />
       </BarChart>

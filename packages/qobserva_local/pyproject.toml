@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "qobserva-local"
-version = "0.1.4"
+version = "0.1.5"
 description = "One-command local stack runner (collector + UI) for QObserva."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -35,7 +35,7 @@ dependencies = [
   "httpx>=0.26.0",
   "platformdirs>=4.2.0",
   "psutil>=5.9.0",
-  "qobserva-collector>=0.1.5",
+  "qobserva-collector>=0.1.6",
 ]
 
 [project.scripts]

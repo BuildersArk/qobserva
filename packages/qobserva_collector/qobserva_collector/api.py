@@ -18,7 +18,7 @@ from .storage import (
     store_event_bundle, load_event_bundle,
     store_analysis_bundle, load_analysis_bundle,
 )
-from .analysis import compute_metrics_and_insights
+from .analysis import compute_metrics_and_insights, sampled_shots
 from .summary import dump_summary, run_algorithm, run_summary, upgrade_schema
 
 def _dist_version(dist_name: str) -> str:
@@ -137,7 +137,7 @@ def create_app() -> FastAPI:
             provider=backend.get("provider", "unknown"),
             backend_name=backend.get("name", "unknown"),
             status=exec_.get("status", "unknown"),
-            shots=int(exec_.get("shots") or 0),
+            shots=sampled_shots(exec_),  # 0 for runs computed exactly
             artifact_ref=artifact_ref,
             analysis_ref=analysis_ref,
             algorithm=run_algorithm(event),
@@ -177,6 +177,7 @@ def create_app() -> FastAPI:
         rows = q.order_by(Run.id.desc()).limit(limit).all()
 
         def row(r: Run) -> Dict[str, Any]:
+            summary = json.loads(r.summary) if r.summary else None
             d = {
                 "run_id": r.run_id,
                 "event_id": r.event_id,
@@ -186,10 +187,13 @@ def create_app() -> FastAPI:
                 "backend_name": r.backend_name,
                 "status": r.status,
                 "shots": r.shots,
+                # Which SDK and algorithm the run used, for the runs tables (collector 0.1.6+).
+                "sdk": summary.get("sdk") if isinstance(summary, dict) else None,
+                "job_id": summary.get("job_id") if isinstance(summary, dict) else None,
+                "algorithm": r.algorithm,
             }
             if include_summary:
-                d["algorithm"] = r.algorithm
-                d["summary"] = json.loads(r.summary) if r.summary else None
+                d["summary"] = summary
             return d
 
         return [row(r) for r in rows]

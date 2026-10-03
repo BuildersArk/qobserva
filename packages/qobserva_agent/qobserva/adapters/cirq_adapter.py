@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import numbers
-from typing import Any, Dict, Optional
+import re
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 from .base import Adapter, AdapterContext
+from .common import build_artifacts, expectation, to_float
 from .version_utils import get_sdk_version
 
 
@@ -68,34 +71,180 @@ def _cirq_timing_to_resource_usage(obj: Any) -> Optional[Dict[str, Any]]:
     return out
 
 
+def _is_result(obj: Any) -> bool:
+    return hasattr(obj, "histogram") and callable(getattr(obj, "histogram")) and hasattr(obj, "measurements")
+
+
+def _result_histogram(result: Any, key: Optional[str]) -> Dict[str, int]:
+    """
+    Counts from a cirq.Result. Uses measurement_key when given; with no key and a single
+    measurement in the circuit, that measurement is used (so measurement_key= is optional).
+    """
+    measurements = getattr(result, "measurements", None)
+    if not isinstance(measurements, dict) or not measurements:
+        return {}
+    if key is None or key not in measurements:
+        if key is not None or len(measurements) != 1:
+            return {}
+        key = next(iter(measurements))
+    histogram: Dict[str, int] = {}
+    # Pad to the number of measured qubits so e.g. |00> is "00", not "0".
+    shape = getattr(measurements[key], "shape", None)
+    width = int(shape[1]) if shape and len(shape) == 2 else 1
+    for intval, cnt in dict(result.histogram(key=key)).items():
+        histogram[format(int(intval), f"0{width}b")] = int(cnt)
+    return histogram
+
+
+def _params(result: Any) -> Dict[str, Any]:
+    """Sweep parameter values of one sweep point, e.g. {"t": 0.5}."""
+    resolver = getattr(result, "params", None)
+    param_dict = getattr(resolver, "param_dict", None) or {}
+    out: Dict[str, Any] = {}
+    for name, value in param_dict.items():
+        v = to_float(value)
+        out[str(name)] = v if v is not None else str(value)
+    return out
+
+
+def _flatten_results(obj: Any) -> List[Any]:
+    """run_sweep returns [Result, ...]; run_batch returns [[Result, ...], ...]."""
+    flat: List[Any] = []
+    for item in obj:
+        if isinstance(item, (list, tuple)):
+            flat.extend(_flatten_results(item))
+        elif _is_result(item):
+            flat.append(item)
+        else:
+            return []
+    return flat
+
+
+def _expectation_values(obj: Any) -> List[Optional[Dict[str, Any]]]:
+    """
+    simulate_expectation_values returns one (complex) value per observable; the sweep variant
+    returns one such list per sweep point.
+    """
+    if obj and all(isinstance(v, (list, tuple)) for v in obj):
+        return [expectation(f"point{p}[{i}]", v) for p, row in enumerate(obj) for i, v in enumerate(row)]
+    return [expectation(f"obs[{i}]", v) for i, v in enumerate(obj)]
+
+
+# Job ids made by cirq_google's local processors (the Quantum Virtual Machine): projects/<p>/processors/<id>/job/<n>
+_LOCAL_ENGINE_JOB_ID = re.compile(r"^projects/[^/]+/processors/([^/]+)/job/[^/]+$")
+
+
+def _iso(value: Any, naive_is_local: bool) -> Optional[str]:
+    if not isinstance(value, datetime):
+        return None
+    if value.tzinfo is None:
+        # Local (virtual) jobs stamp datetime.now(), i.e. local time; otherwise assume UTC.
+        value = value.astimezone() if naive_is_local else value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _processor_id(hint: Any) -> Optional[str]:
+    """backend= given as a cirq_google processor or ProcessorSampler."""
+    processor = getattr(hint, "processor", hint)  # ProcessorSampler.processor is a property
+    pid = getattr(processor, "processor_id", None)
+    return pid if isinstance(pid, str) and pid else None
+
+
+def engine_job_info(job: Any, result: Any, backend_hint: Any = None) -> Optional[Dict[str, Any]]:
+    """
+    Google Quantum Engine job details (cirq_google). A real EngineJob and a Quantum Virtual Machine
+    SimulatedLocalJob share the AbstractJob API (id, processor_ids, create/update time, status, program,
+    calibration); for processor.get_sampler().run(...) only the EngineResult's job_id is available.
+    "virtual" marks local simulation of the processor with its published noise model.
+    """
+    info: Dict[str, Any] = {"provider": "google"}
+    if job is not None and (type(job).__module__ or "").startswith("cirq_google.engine"):
+        from cirq_google.engine.abstract_local_job import AbstractLocalJob
+        virtual = isinstance(job, AbstractLocalJob)
+        info["job_id"] = str(job.id())
+        info["virtual"] = virtual
+        for key, get in (
+            ("processor", lambda: (list(job.processor_ids()) or [None])[0]),
+            ("program_id", lambda: job.program().id()),
+            ("status", lambda: getattr(job.execution_status(), "name", None)),
+            ("created", lambda: _iso(job.create_time(), virtual)),
+            ("updated", lambda: _iso(job.update_time(), virtual)),
+            # Calibration.timestamp is in ms; for the virtual machine it is the calibration its noise model uses
+            ("calibration", lambda: _iso(datetime.fromtimestamp(job.get_calibration().timestamp / 1000, tz=timezone.utc), False)),
+        ):
+            try:
+                value = get()
+                if value not in (None, ""):
+                    info[key] = str(value)
+            except Exception:
+                pass
+    else:
+        job_id = getattr(result, "job_id", None) if type(result).__name__ == "EngineResult" else None
+        if not isinstance(job_id, str) or not job_id:
+            return None
+        info["job_id"] = job_id
+        match = _LOCAL_ENGINE_JOB_ID.match(job_id)
+        info["virtual"] = bool(match)
+        if match:
+            info["processor"] = match.group(1)
+    if "processor" not in info:
+        pid = _processor_id(backend_hint)
+        if pid:
+            info["processor"] = pid
+    return info
+
+
+def engine_backend(info: Dict[str, Any]) -> Dict[str, str]:
+    processor = info.get("processor") or "unknown"
+    if info.get("virtual"):
+        return {"provider": "local_sim", "name": f"{processor} (virtual)"}
+    return {"provider": "google", "name": processor}
+
+
 class CirqAdapter(Adapter):
     name = "cirq"
     priority = 70
 
     def can_handle(self, obj: Any, context: AdapterContext) -> bool:
-        return obj.__class__.__module__.startswith("cirq") or hasattr(obj, "histogram")
+        if obj.__class__.__module__.startswith("cirq") or hasattr(obj, "histogram"):
+            return True
+        # Lists from run_sweep/run_batch/simulate_expectation_values are plain Python lists.
+        return isinstance(obj, (list, tuple)) and (context.tags or {}).get("sdk", "").lower() == "cirq"
 
     def extract(self, obj: Any, context: AdapterContext) -> Dict[str, Any]:
-        histogram = {}
+        histogram: Dict[str, int] = {}
+        expectations: List[Optional[Dict[str, Any]]] = []
+        batches: List[Dict[str, Any]] = []
         key = context.measurement_key
-        if hasattr(obj, "histogram") and callable(getattr(obj, "histogram")) and key:
+        shots = 1
+        if isinstance(obj, (list, tuple)) and len(obj) == 1 and _is_result(obj[0]):
+            obj = obj[0]  # an Engine job's results() for a single circuit / sweep point
+        first = obj
+
+        if _is_result(obj):
             try:
-                h = obj.histogram(key=key)
-                # Pad to the number of measured qubits so e.g. |00> is "00", not "0".
-                width = 1
-                measurements = getattr(obj, "measurements", None)
-                if isinstance(measurements, dict) and key in measurements:
-                    shape = getattr(measurements[key], "shape", None)
-                    if shape and len(shape) == 2:
-                        width = int(shape[1])
-                for intval, cnt in dict(h).items():
-                    histogram[format(int(intval), f"0{width}b")] = int(cnt)
+                histogram = _result_histogram(obj, key)
             except Exception:
                 pass
+        elif isinstance(obj, (list, tuple)) and obj:
+            results = _flatten_results(obj)
+            if results:
+                first = results[0]
+                for r in results:
+                    try:
+                        h = _result_histogram(r, key)
+                    except Exception:
+                        h = {}
+                    batches.append({"params": _params(r), "shots": sum(h.values()), "histogram": h})
+                shots = sum(b["shots"] for b in batches) or 1
+            else:
+                expectations = _expectation_values(obj)  # simulate_expectation_values: exact
         if not histogram and isinstance(obj, dict) and "counts" in obj:
             histogram = {str(k): int(v) for k, v in obj["counts"].items()}
 
-        shots = sum(histogram.values()) or 1
+        if histogram:
+            shots = sum(histogram.values()) or 1
+        obj = first  # backend details below come from the (first) result object
 
         # Extract backend info from result object
         backend_name = None
@@ -160,6 +309,16 @@ class CirqAdapter(Adapter):
         if not backend_name:
             backend_name = "cirq-simulator"
 
+        # Google Quantum Engine (real processors and the Quantum Virtual Machine): label by processor.
+        engine = None
+        try:
+            engine = engine_job_info(context.job, obj, context.backend_hint)
+        except Exception:
+            pass
+        if engine:
+            backend = engine_backend(engine)
+            provider, backend_name = backend["provider"], backend["name"]
+
         # Execution time breakdown when available (EngineResult, ExecutableResult, etc.)
         resource_usage = _cirq_timing_to_resource_usage(obj)
 
@@ -167,8 +326,15 @@ class CirqAdapter(Adapter):
             "sdk": {"name": "cirq", "version": get_sdk_version("cirq")},
             "backend": {"provider": provider, "name": backend_name},
             "shots": shots,
-            "artifacts": {"result_type": "counts", "counts": {"bit_order": "little", "histogram": histogram, "mapping": {}}},
+            "artifacts": build_artifacts(histogram=histogram, expectations=expectations, batches=batches),
         }
+        execution: Dict[str, Any] = {}
         if resource_usage:
-            out["execution"] = {"resource_usage": resource_usage}
+            execution["resource_usage"] = resource_usage
+        if engine:
+            execution["provider_job"] = engine
+        if execution:
+            out["execution"] = execution
+        if expectations and not histogram and not batches:
+            out["exact"] = True  # simulate_expectation_values takes no samples
         return out

@@ -136,6 +136,24 @@ def my_quantum_algorithm():
 
 If you omit the `sdk` tag, QObserva will attempt to detect it from the result object, but this is less reliable and may result in incorrect provider/backend detection.
 
+### What Gets Recorded
+
+Return the SDK's result (or a local job/task) from the decorated function. QObserva records:
+
+| Result | Examples | Shown in Run Details as |
+|---|---|---|
+| Counts | Qiskit `SamplerV2`, Braket `measurement_counts`, Cirq `run`, PennyLane `qml.counts` / `qml.sample`, pyQuil, D-Wave | Measurement Results and the sampling metrics |
+| Expectation values | Qiskit `EstimatorV2` (`evs`, `stds`), Braket `expectation` / `variance`, Cirq `simulate_expectation_values`, PennyLane `expval` | Expectation Values table |
+| Probabilities | PennyLane `qml.probs`, Braket `probability` | Measurement Probabilities chart |
+| Batches | Cirq `run_sweep` / `run_batch`, PennyLane shot vectors, multi-PUB Sampler results | Batch Results table (one row per sweep point / group / PUB) |
+| Energies and embedding | D-Wave SampleSets; `EmbeddingComposite(..., return_embedding=True)` adds chain lengths and chain breaks | Optimization Results, Embedding & Chain Breaks |
+
+Also recorded when the SDK provides them: the provider's job ID (searchable in the dashboard); circuit qubits, depth and gate counts, the circuit as OpenQASM/Quil and a text diagram; the IBM Quantum job timeline, queue time, billed QPU seconds, execution spans or chunk timing, and the requested and applied error-suppression/mitigation options; Braket task times; the estimated AWS cost of Braket tasks (from Braket's `Tracker`); and Google Quantum Engine / Quantum Virtual Machine job details (processor, program, status, calibration time). Results computed exactly, without sampling (a statevector Estimator, PennyLane analytic mode, Braket `shots=0`), show **Exact** instead of a shot count.
+
+- **Local jobs** (Qiskit primitives and Aer, IBM Runtime local mode, Braket `LocalSimulator`, Cirq Quantum Virtual Machine jobs) are read automatically, and your function still returns the job. **Cloud jobs** are never waited on unless you pass `await_result=True`. Without it, the run is recorded with the job id and a hint.
+- **Circuit:** IBM Runtime jobs and PennyLane QNodes provide it automatically. For other runs, pass the circuit: `@observe_run(..., circuit=qc)` (Qiskit `QuantumCircuit`, Cirq `Circuit`, Braket `Circuit` or pyQuil `Program`). By default (`capture_program="full"`) QObserva records the circuit's metrics, its OpenQASM/Quil text and a diagram, and stores them with your collector (local by default). `capture_program="hash"` records only metrics and a hash; `"none"` records nothing about the circuit.
+- If QObserva can't read any results from what your function returned, it records the run as `unknown` and prints a one-line warning, instead of an empty success.
+
 ### View Dashboard
 
 Open http://localhost:3000 to see:
@@ -215,15 +233,20 @@ When using QObserva, it's important to understand how **Project**, **Provider**,
 | **Qiskit** | Aer / fake backends | `local_sim` | e.g. `aer_simulator`, `fake_manila` | From the result, the returned job, or `backend=` |
 | **Qiskit** | IBM hardware | `ibm` | Device name, e.g. `ibm_brisbane` | Return the job with `await_result=True`, or pass `backend=` |
 | **Qiskit** | StatevectorSampler / other V2 primitives | `unknown` | `unknown` | V2 primitive results don't name their backend; pass `backend=` / `provider=` |
-| **Braket** | Simulator | From `result.task_metadata.deviceArn` or device name | From ARN or `result.device.name` | Usually `local_sim` for LocalSimulator |
-| **Braket** | Real Device | From ARN path (`/qpu/ionq/...` → `ionq`) | Last part of ARN | Extracted from device ARN structure |
+| **Braket** | LocalSimulator | `local_sim` | `LocalSimulator` (or the local simulator id, e.g. `braket_dm`) | From `result.task_metadata.deviceId` |
+| **Braket** | AWS simulators (SV1, DM1, TN1) | `aws_braket` | e.g. `sv1` | From the device ARN in `task_metadata.deviceId` |
+| **Braket** | QPU | The QPU maker from the ARN (`/qpu/rigetti/...` → `rigetti`) | Last part of the ARN, e.g. `Ankaa-3` | From the device ARN in `task_metadata.deviceId` |
 | **Cirq** | Simulator | Defaults to `local_sim` | `result.simulator.__class__.__name__` | Always `local_sim` for simulators |
-| **Cirq** | Real Device | From device object (if available) | From device object | May show `google` for Google devices |
-| **PennyLane** | Simulator | **Hardcoded default: `local_sim`** | **Hardcoded default: `default.qubit`** | ⚠️ Counts dicts don't include device info |
-| **PennyLane** | Real Device | Inferred from device name pattern | From `device.name` | Detects provider from device name (e.g., `qiskit.*` → `ibm`) |
+| **Cirq** | Quantum Virtual Machine (`cirq_google`) | `local_sim` | Processor, e.g. `willow_pink (virtual)` | From the Engine job or the EngineResult job id; local simulation with the processor's noise model |
+| **Cirq** | Google Quantum Engine | `google` | Processor id | From the Engine job (`processor.run_sweep(...)` with `await_result=True`), or pass `backend=processor` (not verified on real hardware) |
+| **PennyLane** | Decorated QNode | From the QNode's device | The QNode's `device.name` | Decorate the QNode itself to record its real device |
+| **PennyLane** | Simulator (plain values) | **Default: `local_sim`** | **Default: `default.qubit`** | ⚠️ Counts dicts and arrays don't include device info |
+| **PennyLane** | Plugin devices (`qiskit.remote`, `qiskit.aer`, `braket.aws.qubit`, `braket.local.qubit`) | The device the plugin ran: `ibm`, `aws_braket`, a QPU maker, or `local_sim` | e.g. `ibm_fez`, `sv1`, `aer_simulator` | From the plugin's Qiskit backend or Braket device ARN; Braket plugin runs also record the task id and cost |
 | **pyQuil** | QVM / QPU | `local_sim` for QVM, `rigetti` for QPU | `qvm`, or the `get_qc(...)` name when passed as `backend=` | From pyQuil 4 `QAMExecutionResult` |
-| **D-Wave** | Local samplers (`ExactSolver`, …) | `unknown`, or `local_sim` with `backend=sampler` | Sampler class name when passed as `backend=` | A SampleSet doesn't say which sampler produced it |
-| **D-Wave** | D-Wave cloud (QPU / hybrid) | `dwave` | Solver name when the sampler is passed as `backend=` | Detected from the job details D-Wave returns |
+| **D-Wave** | `SimulatedAnnealingSampler` (also inside `EmbeddingComposite`) | `local_sim` | `SimulatedAnnealingSampler` | Recognized from its annealing schedule in the SampleSet info |
+| **D-Wave** | Other local samplers (`ExactSolver`, `TabuSampler`, …) | `unknown`, or `local_sim` with `backend=sampler` | Sampler class name when passed as `backend=` | These SampleSets don't say which sampler produced them |
+| **D-Wave** | D-Wave cloud (QPU / hybrid) | `dwave` | Solver name when the sampler is passed as `backend=` | Detected from the problem id D-Wave returns; the problem id is shown as the run's job id |
+| **D-Wave** | `MockDWaveSampler` (Ocean's local QPU imitation) | `local_sim` with `backend=sampler` | `MockDWaveSampler` | Its results imitate a cloud result, so pass `backend=` to label it correctly |
 
 ### Important Notes
 
