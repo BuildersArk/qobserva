@@ -11,6 +11,15 @@ import EntropyMetrics from '../components/runDetails/EntropyMetrics';
 import ShotEfficiency from '../components/runDetails/ShotEfficiency';
 import RuntimeMetrics from '../components/runDetails/RuntimeMetrics';
 import ExecutionTimeBreakdown from '../components/runDetails/ExecutionTimeBreakdown';
+import ExpectationValues from '../components/runDetails/ExpectationValues';
+import BatchResults from '../components/runDetails/BatchResults';
+import AnnealingDetails from '../components/runDetails/AnnealingDetails';
+import CircuitDetails from '../components/runDetails/CircuitDetails';
+import JobTimeline from '../components/runDetails/JobTimeline';
+import ExecutionOptions from '../components/runDetails/ExecutionOptions';
+import ProviderJob from '../components/runDetails/ProviderJob';
+import { EXACT_TOOLTIP, knownQueueMs, sampledShots, shotsLabel } from '../utils/shots';
+import InputOptions from '../components/runDetails/InputOptions';
 import { calculateRunMetrics } from '../utils/runMetrics';
 import { checkTagWarnings } from '../utils/tagWarnings';
 import { ChevronDown, ChevronUp, AlertTriangle, Info } from 'lucide-react';
@@ -63,6 +72,9 @@ export default function RunDetails() {
   const entropy = metrics['qc.quality.shannon_entropy_bits'];
   const counts = event?.artifacts?.counts?.histogram || {};
   const totalStates = Object.keys(counts).length;
+  // Runs without sampled counts (e.g. qml.probs, Braket probability) chart their probabilities instead.
+  const probabilities = event?.artifacts?.probabilities?.values;
+  const showProbabilities = totalStates === 0 && !!probabilities && Object.keys(probabilities).length > 0;
   
   // Check for tag-based warnings (conservative, only for clearly test/error scenarios)
   const tagWarning = useMemo(() => {
@@ -123,6 +135,35 @@ export default function RunDetails() {
               {tagWarning.tagContext && (
                 <p className="text-xs text-dark-text-muted mt-2">
                   Tag context: {tagWarning.tagContext}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Results the agent could not read (returned object not recognized, or cloud job not awaited) */}
+      {(event.artifacts?.unrecognized || event.artifacts?.pending_job) && (
+        <div className="card border-l-4 border-warning bg-warning/10">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="text-warning mt-0.5 flex-shrink-0" size={20} />
+            <div className="flex-1">
+              <h4 className="font-semibold mb-1 text-warning">No results recorded</h4>
+              {event.artifacts?.pending_job ? (
+                <p className="text-sm text-dark-text">
+                  The run returned a cloud job before it finished
+                  {event.artifacts.pending_job.job_id ? (
+                    <> (job <span className="font-mono">{event.artifacts.pending_job.job_id}</span>)</>
+                  ) : null}
+                  . Add <span className="font-mono">await_result=True</span> to <span className="font-mono">@observe_run</span> to wait for it and record its results.
+                </p>
+              ) : (
+                <p className="text-sm text-dark-text">
+                  QObserva could not read results from the returned object
+                  {event.artifacts?.unrecognized?.type ? (
+                    <> (<span className="font-mono">{event.artifacts.unrecognized.type}</span>)</>
+                  ) : null}
+                  . Return the SDK's result object (for example <span className="font-mono">job.result()</span>) from the decorated function.
                 </p>
               )}
             </div>
@@ -239,7 +280,11 @@ export default function RunDetails() {
         ) : (
           <MetricCard label="Success Rate" value="N/A" />
         )}
-        <MetricCard label="Shots" value={event.execution.shots.toLocaleString()} />
+        <MetricCard
+          label="Shots"
+          value={shotsLabel(event.execution.shots, event.execution.exact)}
+          title={event.execution.exact ? EXACT_TOOLTIP : undefined}
+        />
         <MetricCard 
           label="Runtime" 
           value={event.execution.runtime_ms 
@@ -298,15 +343,35 @@ export default function RunDetails() {
         </div>
       )}
 
+      {/* Expectation values (Estimator, expval, Braket expectation/variance) */}
+      {event.artifacts?.expectations && event.artifacts.expectations.length > 0 && (
+        <ExpectationValues expectations={event.artifacts.expectations} />
+      )}
+
       {/* Charts */}
       <div className="grid grid-cols-2 gap-6">
-        <div className="card">
-          <h3 className="text-lg font-semibold mb-2 text-white">Measurement Results</h3>
-          <p className="text-sm text-dark-text-muted mb-4">
-            Distribution of measurement outcomes (bitstrings) and how many times each was observed. Shows the top 20 most frequent outcomes.
-          </p>
-          <CountsChart counts={event.artifacts?.counts?.histogram || {}} />
-        </div>
+        {showProbabilities ? (
+          <div className="card">
+            <h3 className="text-lg font-semibold mb-2 text-white">Measurement Probabilities</h3>
+            <p className="text-sm text-dark-text-muted mb-4">
+              Probability of each basis state as returned by the run (no sampled shots). Shows the top 20 most likely outcomes.
+            </p>
+            <CountsChart
+              counts={probabilities!}
+              valueName="Probability"
+              yAxisLabel="Probability"
+              formatValue={(v) => v.toFixed(4)}
+            />
+          </div>
+        ) : (
+          <div className="card">
+            <h3 className="text-lg font-semibold mb-2 text-white">Measurement Results</h3>
+            <p className="text-sm text-dark-text-muted mb-4">
+              Distribution of measurement outcomes (bitstrings) and how many times each was observed. Shows the top 20 most frequent outcomes.
+            </p>
+            <CountsChart counts={event.artifacts?.counts?.histogram || {}} />
+          </div>
+        )}
         
         <div className="card">
           <h3 className="text-lg font-semibold mb-4 text-white">Execution Timeline</h3>
@@ -316,6 +381,36 @@ export default function RunDetails() {
           />
         </div>
       </div>
+
+      {/* Per-execution results (sweeps, shot vectors, multiple PUBs) */}
+      {event.artifacts?.batches && event.artifacts.batches.length > 0 && (
+        <BatchResults batches={event.artifacts.batches} />
+      )}
+
+      {/* D-Wave embedding quality */}
+      {event.artifacts?.annealing && <AnnealingDetails annealing={event.artifacts.annealing} />}
+
+      {/* Provider's job (IBM job id, program, mode, usage) to correlate with the provider's console */}
+      {event.execution.provider_job && (
+        <ProviderJob job={event.execution.provider_job} execution={event.execution} />
+      )}
+
+      {/* Circuit metrics, diagram and source (from circuit=, a Runtime job's circuits, or a PennyLane QNode) */}
+      {((event.program?.circuit_metrics && Object.keys(event.program.circuit_metrics).length > 0) ||
+        event.program?.circuit) && (
+        <CircuitDetails metrics={event.program?.circuit_metrics} text={event.program?.circuit} />
+      )}
+
+      {/* Provider-reported job timeline (IBM Runtime job metrics, Braket task metadata) */}
+      {event.execution.timeline && (event.execution.timeline.created || event.execution.timeline.finished) && (
+        <JobTimeline execution={event.execution} />
+      )}
+
+      {/* Error suppression / mitigation options (Qiskit Runtime) */}
+      {event.execution.options && <ExecutionOptions options={event.execution.options} />}
+
+      {/* Full submitted options (IBM's "Input options") */}
+      {event.execution.input_options && <InputOptions options={event.execution.input_options} />}
 
       {/* New Metrics Sections */}
       
@@ -359,8 +454,8 @@ export default function RunDetails() {
       {runMetrics.runtimePerShot !== undefined && event.execution?.runtime_ms !== undefined && (
         <RuntimeMetrics 
           runtimeMs={event.execution.runtime_ms || 0}
-          queueMs={event.execution.queue_ms || 0}
-          shots={event.execution.shots || 0}
+          queueMs={knownQueueMs(event)}
+          shots={sampledShots(event.execution)}
           runtimePerShot={runMetrics.runtimePerShot}
           classification={runMetrics.runtimeClassification || 'unknown'}
         />

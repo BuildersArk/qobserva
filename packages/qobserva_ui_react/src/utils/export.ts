@@ -1,3 +1,4 @@
+import { sdkLabel } from './sdk';
 /**
  * Export data to CSV file
  */
@@ -56,8 +57,10 @@ export function exportRunsToCSV(runs: any[], filename: string = 'qobserva-runs')
     'Run ID': run.run_id,
     'Time': new Date(run.created_at).toISOString(),
     'Project': run.project,
+    'SDK': sdkLabel(run),
     'Provider': run.provider,
     'Backend': run.backend_name,
+    'Job ID': run.job_id || '',
     'Status': run.status,
     'Shots': run.shots,
   }));

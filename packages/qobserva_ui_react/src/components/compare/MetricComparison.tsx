@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Event, Analysis } from '../../services/api';
 import { calculateRunMetrics } from '../../utils/runMetrics';
+import { sampledShots, shotsLabel } from '../../utils/shots';
 
 interface Props {
   runA: { event: Event; analysis: Analysis };
@@ -58,19 +59,19 @@ export default function MetricComparison({ runA, runB }: Props) {
               <div className="flex items-baseline gap-2">
                 <span className="text-xs text-primary font-medium">Run A:</span>
                 <span className="text-xl font-bold text-white">
-                  {runA.event.execution.shots.toLocaleString()}
+                  {shotsLabel(runA.event.execution.shots, runA.event.execution.exact)}
                 </span>
               </div>
               <div className="flex items-baseline gap-2">
                 <span className="text-xs text-success font-medium">Run B:</span>
                 <span className="text-xl font-bold text-white">
-                  {runB.event.execution.shots.toLocaleString()}
+                  {shotsLabel(runB.event.execution.shots, runB.event.execution.exact)}
                 </span>
               </div>
             </div>
             <div className="mt-2 pt-2 border-t border-dark-border">
-              <div className={`text-sm font-semibold ${getDeltaColor(runA.event.execution.shots, runB.event.execution.shots)}`}>
-                Δ: {formatDelta(runA.event.execution.shots, runB.event.execution.shots)}
+              <div className={`text-sm font-semibold ${getDeltaColor(sampledShots(runA.event.execution), sampledShots(runB.event.execution))}`}>
+                Δ: {formatDelta(sampledShots(runA.event.execution), sampledShots(runB.event.execution))}
               </div>
             </div>
           </div>

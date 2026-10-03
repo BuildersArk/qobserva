@@ -1,5 +1,70 @@
 # Changelog
 
+## 0.1.8 (qobserva 0.1.8 · qobserva-agent 0.1.3 · qobserva-collector 0.1.6 · qobserva-local 0.1.5)
+
+### Behavior change: the circuit is recorded by default
+`@observe_run` now records the circuit that ran as OpenQASM 3/2 (Quil for pyQuil) plus a text diagram, in addition to
+its metrics. The default `capture_program` changed from `"hash"` to `"full"`. Run data goes only to the collector you
+configure (local by default). Use `capture_program="hash"` for the 0.1.7 behavior (metrics and a hash only), or
+`"none"` to record nothing about the circuit. Circuit text is size-capped.
+
+### Results that were silently lost are now recorded
+Several common result types were stored as "success" with no values. Each case below was reproduced on the real SDK before the fix and now has a real-SDK test.
+- **Qiskit Estimator** (`StatevectorEstimator`, Aer `EstimatorV2`, IBM Runtime `EstimatorV2`): expectation values and standard errors from every PUB (was an empty histogram). Multi-PUB Sampler results keep every PUB, not only the first.
+- **Braket** `expectation`, `variance` and `probability` result types, including alongside counts (the expectation value was dropped when `shots > 0`).
+- **Cirq** `simulate_expectation_values` (recorded under a PennyLane backend name with no values) and `run_sweep` / `run_batch` (now one entry per sweep point with its parameters). `measurement_key` is optional when the circuit has one measurement.
+- **PennyLane** `qml.probs` (was `unknown`, with numpy's `"cpu"` as the backend), `qml.sample` (now counts), and shot vectors (`set_shots([100, 200])`: one entry per group plus the combined counts). A decorated QNode now records its real device.
+- **Local jobs returned without `.result()`** (Qiskit primitives and Aer, IBM Runtime local mode, Braket `LocalSimulator` tasks) are read automatically; the function still returns the job. Cloud jobs are never waited on without `await_result=True`; they are recorded with their job id.
+- **"Nothing extracted" warning:** if no values can be read from what the function returned, the run is recorded as `unknown` with the returned type, and a one-line warning is printed, instead of an empty success.
+
+### Backend labels
+- **Braket (important for AWS users):** the adapter looked for `deviceArn` in a dict, but Braket results carry a `task_metadata` object whose field is `deviceId`, so the device was never read and every run fell back to `local_sim / LocalSimulator`. AWS simulators are now `aws_braket / sv1` etc., and QPUs are labeled by maker (e.g. `rigetti / Ankaa-3`). Confirmed on AWS SV1 on 2026-10-03 (labels and Tracker cost); QPU labels not yet run.
+- **D-Wave:** `SimulatedAnnealingSampler` (also inside `EmbeddingComposite`) was labeled `dwave / unknown`, i.e. D-Wave hardware. It is now `local_sim / SimulatedAnnealingSampler`. D-Wave cloud results are recognized by their `problem_id` / QPU timing.
+  - Checked against Ocean's source and D-Wave's published outputs, including a real saved QPU output (OpenJij
+    tutorial), but not on D-Wave hardware: a trial Leap account gets no Solver API token.
+  - The problem id is recorded as the run's job id. QPU timing (µs → s, all fields kept) and Leap hybrid timing
+    (`qpu_access_time`, `charge_time`, `run_time`, top-level or nested) are recorded.
+  - `MockDWaveSampler` (Ocean's local QPU imitation) is labeled `local_sim` when passed as `backend=`. Its results
+    imitate a cloud result, so without `backend=` it would be labeled `dwave`.
+  - Not yet supported: the nonlinear (Stride) hybrid solver's result (a model plus info, not a SampleSet).
+- With an `sdk` tag, a plain Python result (list, dict, number) is no longer claimed by another SDK's adapter.
+
+### New data
+- **Circuit metrics:** qubits, depth, two-qubit gates and gate breakdown, from `@observe_run(circuit=...)` (new optional parameter: Qiskit, Cirq, Braket, pyQuil), from the circuits an IBM Runtime job ran, or from a PennyLane QNode (`qml.specs` at device level). This fills the "Circuit Depth vs Success" chart. Depth counts as "executed" for transpiled circuits and local simulators, otherwise as "submitted".
+- **IBM Quantum (verified on ibm_kingston, 2026-09-28; two live rounds, the second 34/34 checks):**
+  - Job details: job id, program (sampler/estimator/executor), mode, items, region, creation time, IBM's usage estimate.
+    The instance CRN is not stored (it contains the IBM Cloud account id); only its region is.
+  - Timeline and queue time from `job.metrics()`. Real jobs report ISO-string timestamps; local mode reports datetimes.
+  - Billed QPU seconds (`usage.qpu_charge_time_seconds`), plus IBM's reported circuit execution time (`circuits_execution_time_ns`).
+  - Execution spans (Sampler), and chunk timing for executor jobs (the client-side Sampler).
+  - Options: what was requested, plus what IBM reports as applied in the result metadata (e.g. `resilience_level=1` turned on
+    measurement twirling and measurement mitigation). Also the full input options.
+  - For executor jobs, the circuit is read from the job's QuantumProgram. Qubits holding only IBM's dynamical-decoupling
+    padding (delays and X pairs) are not counted as working qubits or gates (e.g. 2 qubits and 21 gates, not 156 qubits and 329 gates).
+  - Every recorded count and expectation value was compared with IBM's own job result and matched exactly.
+- **Aer:** simulator execution time.
+- **Braket:** task created/ended times, and the estimated cost of AWS tasks from Braket's own `Tracker` (local tasks have no cost).
+- **Braket task id** (as the Braket console lists it) as the run's job id, in the Job ID column and search; the full task ARN, device, region and a retrieve snippet are in the new Run Details "Amazon Braket Task" card. A task returned before it finished is labeled with the device the Tracker saw it created on (it was `local_sim`), and its cost is recorded as not known yet instead of $0 (the Tracker prices simulator tasks only when they finish). Found in the 2026-10-03 SV1 live run.
+- **Braket circuits without `circuit=`:** metrics, OpenQASM and diagram are read from the program each result carries (`additional_metadata.action`), so expectation-value runs get them too.
+- **Exact runs are no longer shown as 1 shot.** Results computed without sampling (Qiskit `StatevectorEstimator`/Aer `EstimatorV2` at precision 0, PennyLane analytic QNodes, Cirq `simulate_expectation_values`, Braket `shots=0`) carry `execution.exact: true`; the collector lists them with 0 shots and the dashboard shows "Exact". The event keeps `shots: 1` because the schema requires it, so older collectors still accept these runs. Runs recorded before 0.1.8 keep 1.
+- **Queue time "Not reported"** instead of "0ms" when the provider gave none (it is measured for IBM jobs; local simulators have none), and the runtime classification is not guessed from an assumed 0 ms queue.
+- **Google Quantum Engine and Cirq's Quantum Virtual Machine (QVM):** runs are labeled by processor (QVM runs as `local_sim / willow_pink (virtual)`, Engine runs as `google / <processor>`) and keep the Engine job id. A returned Engine job (`processor.run_sweep(...)`) is read like other jobs (QVM jobs at once, cloud jobs with `await_result=True`) and records its processor, program, status, created/updated times, calibration time and its circuit. New Run Details card. Checked on all three QVM processors (rainbow, weber, willow_pink); real Engine hardware needs Google's approval and is not verified.
+- **PennyLane plugins:** the backend is the device the plugin ran (e.g. `ibm / ibm_fez`, `aws_braket / sv1`, `local_sim / aer_simulator`) instead of the plugin name; the Braket plugin's `qml.counts()` (a 0-d object array) is no longer dropped; PennyLane runs on Braket record the task id and Tracker cost. Checked live on IBM ibm_fez and AWS SV1.
+- **D-Wave:** chain break fraction, chain lengths and chain strength from `EmbeddingComposite(..., return_embedding=True)`; timing from local dwave-samplers.
+
+### Collector
+- New metrics: `qc.expectation.count/mean/value/max_stderr`, `qc.batch.count`, `qc.anneal.chain_break_fraction/max_chain_length/physical_qubits`; Shannon entropy from exact probabilities.
+- New insight when more than 10% of chains break.
+
+### Dashboard
+- **Job ID column** in Recent Runs and Search Runs (searchable) and the CSV export: correlate a run with the provider's
+  console. `GET /v1/runs` includes each run's `job_id` (new field only).
+- **SDK column** in Recent Runs, Search Runs (also searchable) and the CSV export. `GET /v1/runs` now includes each run's `sdk` and `algorithm` (new fields only).
+- **Upgrades show up in the browser:** the dashboard server sent `index.html` without `Cache-Control`, so a browser could keep showing the previous dashboard for hours after an upgrade. `index.html` is now revalidated on every load, and the content-hashed files under `/assets/` are cached long-term. A browser that cached a pre-0.1.8 page picks this up after one reload.
+- Runs without measurement counts (energies, expectation values, sweeps) no longer show "Effective Support Size" and "Shot Efficiency" cards filled with zeros. On the Compare page these show "N/A".
+
+New Run Details cards, shown only when a run has that data: Expectation Values, Measurement Probabilities, Batch Results, Embedding & Chain Breaks, Circuit (metrics, text diagram, OpenQASM/Quil), IBM Quantum Job (with a snippet to retrieve the job), Job Timeline (with execution spans / chunk timing), Execution Options, Input Options, and a notice when a run recorded no results. Runs recorded by 0.1.7 render exactly as before (checked page by page in Chrome on a 0.1.7 data folder).
+
 ## 0.1.7 (qobserva 0.1.7 · qobserva-agent 0.1.2 · qobserva-collector 0.1.5 · qobserva-local 0.1.4)
 
 qobserva-agent is unchanged (still 0.1.2).

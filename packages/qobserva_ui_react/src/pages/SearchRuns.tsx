@@ -4,8 +4,10 @@ import { useQuery } from '@tanstack/react-query';
 import { Search, ArrowRight } from 'lucide-react';
 import { apiService } from '../services/api';
 import CopyableRunId from '../components/CopyableRunId';
+import { sdkLabel } from '../utils/sdk';
 import { format } from 'date-fns';
 import logoImage from '../assets/images/qoblogo.png';
+import { EXACT_TOOLTIP, shotsLabel } from '../utils/shots';
 
 export default function SearchRuns() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -25,7 +27,9 @@ export default function SearchRuns() {
       run.project.toLowerCase().includes(term) ||
       run.provider.toLowerCase().includes(term) ||
       run.backend_name.toLowerCase().includes(term) ||
-      run.status.toLowerCase().includes(term)
+      run.status.toLowerCase().includes(term) ||
+      sdkLabel(run).toLowerCase().includes(term) ||
+      (run.job_id || '').toLowerCase().includes(term)
     );
   });
 
@@ -63,7 +67,7 @@ export default function SearchRuns() {
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             onKeyPress={handleKeyPress}
-            placeholder="Enter run ID, project, provider, backend, or status..."
+            placeholder="Enter run ID, job ID, project, SDK, provider, backend, or status..."
             className="w-full bg-dark-bg border border-dark-border rounded-lg pl-12 pr-4 py-3 text-dark-text text-lg focus:outline-none focus:border-primary/50"
             autoFocus
           />
@@ -96,8 +100,10 @@ export default function SearchRuns() {
                       <th className="text-left py-3 px-4 text-sm font-semibold text-dark-text-muted">Run ID</th>
                       <th className="text-left py-3 px-4 text-sm font-semibold text-dark-text-muted">Time</th>
                       <th className="text-left py-3 px-4 text-sm font-semibold text-dark-text-muted">Project</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-dark-text-muted">SDK</th>
                       <th className="text-left py-3 px-4 text-sm font-semibold text-dark-text-muted">Provider</th>
                       <th className="text-left py-3 px-4 text-sm font-semibold text-dark-text-muted">Backend</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-dark-text-muted">Job ID</th>
                       <th className="text-left py-3 px-4 text-sm font-semibold text-dark-text-muted">Status</th>
                       <th className="text-left py-3 px-4 text-sm font-semibold text-dark-text-muted">Shots</th>
                       <th className="text-left py-3 px-4 text-sm font-semibold text-dark-text-muted">Action</th>
@@ -116,8 +122,10 @@ export default function SearchRuns() {
                           {format(new Date(run.created_at), 'MMM dd, HH:mm')}
                         </td>
                         <td className="py-3 px-4 text-sm text-dark-text">{run.project}</td>
+                        <td className="py-3 px-4 text-sm text-dark-text">{sdkLabel(run)}</td>
                         <td className="py-3 px-4 text-sm text-dark-text">{run.provider}</td>
                         <td className="py-3 px-4 text-sm text-dark-text">{run.backend_name}</td>
+                        <td className="py-3 px-4 text-sm text-dark-text" onClick={(e) => run.job_id && e.stopPropagation()}>{run.job_id ? <CopyableRunId runId={run.job_id} /> : <span className="text-dark-text-muted">—</span>}</td>
                         <td className="py-3 px-4">
                           <span
                             className={`px-2 py-1 rounded text-xs font-semibold ${
@@ -131,7 +139,7 @@ export default function SearchRuns() {
                             {run.status}
                           </span>
                         </td>
-                        <td className="py-3 px-4 text-sm text-dark-text">{run.shots.toLocaleString()}</td>
+                        <td title={run.shots === 0 ? EXACT_TOOLTIP : undefined} className="py-3 px-4 text-sm text-dark-text">{shotsLabel(run.shots, run.shots === 0)}</td>
                         <td className="py-3 px-4">
                           <button
                             onClick={() => handleRunClick(run.run_id)}

@@ -2,13 +2,14 @@ import MetricCard from '../MetricCard';
 
 interface Props {
   runtimeMs: number;
-  queueMs: number;
+  queueMs?: number; // undefined: the provider did not report a queue time
   shots: number;
   runtimePerShot: number;
   classification: 'cpu-bound' | 'queue-dominated' | 'execution-dominated' | 'unknown';
 }
 
 export default function RuntimeMetrics({ runtimeMs, queueMs, runtimePerShot, classification }: Props) {
+  const queueText = queueMs === undefined ? 'Not reported' : `${queueMs.toLocaleString()}ms`;
   const getClassificationColor = (cls: string) => {
     switch (cls) {
       case 'queue-dominated':
@@ -48,7 +49,7 @@ export default function RuntimeMetrics({ runtimeMs, queueMs, runtimePerShot, cla
         />
         <MetricCard 
           label="Queue Time" 
-          value={`${queueMs.toLocaleString()}ms`}
+          value={queueText}
         />
         <MetricCard 
           label="Runtime/Shot" 
@@ -68,7 +69,7 @@ export default function RuntimeMetrics({ runtimeMs, queueMs, runtimePerShot, cla
           <span className="text-dark-text-muted">Time Distribution:</span>
         </div>
         <div className="w-full bg-dark-bg rounded-full h-4 flex overflow-hidden">
-          {runtimeMs > 0 && queueMs > 0 && (
+          {runtimeMs > 0 && queueMs !== undefined && queueMs > 0 && (
             <>
               <div 
                 className="bg-primary h-4 transition-all"
@@ -85,9 +86,14 @@ export default function RuntimeMetrics({ runtimeMs, queueMs, runtimePerShot, cla
         </div>
         <div className="flex justify-between text-xs text-dark-text-muted mt-2">
           <span>Execution: {runtimeMs}ms</span>
-          <span>Queue: {queueMs}ms</span>
+          <span>Queue: {queueText}</span>
         </div>
       </div>
+      {queueMs === undefined && (
+        <p className="text-sm text-dark-text-muted mt-4">
+          This provider did not report a queue time for this run, so the time split is not classified.
+        </p>
+      )}
       {classification === 'queue-dominated' && (
         <p className="text-sm text-warning mt-4">
           ⚠️ Queue time dominates - Backend may be heavily loaded

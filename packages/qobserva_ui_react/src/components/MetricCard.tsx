@@ -6,9 +6,10 @@ interface MetricCardProps {
   change?: string;
   onClick?: () => void;
   clickable?: boolean;
+  title?: string; // hover tooltip
 }
 
-export default function MetricCard({ label, value, change, onClick, clickable = false }: MetricCardProps) {
+export default function MetricCard({ label, value, change, onClick, clickable = false, title }: MetricCardProps) {
   const handleClick = () => {
     if (clickable && onClick) {
       onClick();
@@ -19,6 +20,7 @@ export default function MetricCard({ label, value, change, onClick, clickable = 
     <div 
       className={`metric-card ${clickable ? 'cursor-pointer hover:border-primary/50 transition-colors' : ''}`}
       onClick={handleClick}
+      title={title}
     >
       <div className="text-xs font-semibold text-dark-text-muted uppercase tracking-wide mb-2">
         {label}

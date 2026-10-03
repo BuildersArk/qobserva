@@ -38,11 +38,14 @@ def client(tmp_path, monkeypatch):
 def test_summary_is_opt_in(client):
     assert client.post("/v1/ingest/run-event", json=_event("r1", "grover")).status_code == 200
     plain = client.get("/v1/runs").json()[0]
-    assert "summary" not in plain and "algorithm" not in plain
+    assert "summary" not in plain
+    # Every row names its SDK and algorithm (collector 0.1.6+) so the runs tables can show them.
+    assert plain["sdk"] == "qiskit" and plain["algorithm"] == "grover"
 
     run = client.get("/v1/runs", params={"include_summary": "true"}).json()[0]
     assert run["algorithm"] == "grover"
     assert run["summary"] == {
+        "job_id": None,  # this event has no provider job
         "sdk": "qiskit",
         "runtime_ms": 12,
         "metrics": {"qc.circuit.depth_post": 7, "qc.quality.success_probability": 0.8},

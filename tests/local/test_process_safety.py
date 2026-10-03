@@ -108,3 +108,33 @@ def test_dashboard_server_answers_while_another_connection_is_idle(tmp_path, dat
         assert httpx.get(f"http://127.0.0.1:{port}/", timeout=5).status_code == 200
     finally:
         idle.close()
+
+def test_dashboard_html_is_revalidated_and_hashed_assets_are_cached(tmp_path, data_dir, monkeypatch):
+    """
+    After an upgrade the browser must load the new dashboard: index.html (also served for SPA
+    routes like /runs/<id>) is never reused from cache without revalidating, while the
+    content-hashed files under /assets/ can be cached for good.
+    """
+    from types import SimpleNamespace
+
+    import httpx
+    from conftest import free_port
+
+    ui = tmp_path / "ui_dist"
+    (ui / "assets").mkdir(parents=True)
+    (ui / "index.html").write_text('<html><script src="/assets/index-abc123.js"></script></html>')
+    (ui / "assets" / "index-abc123.js").write_text("console.log(1)")
+    port = free_port()
+    cfg = SimpleNamespace(ui_host="127.0.0.1", ui_port=port, collector_host="127.0.0.1", collector_port=free_port())
+    monkeypatch.setattr(process, "write_pid", lambda *a: None)
+    process._start_static_server(ui, cfg)
+    base = f"http://127.0.0.1:{port}"
+
+    for path in ("/", "/index.html", "/runs/some-run-id"):
+        r = httpx.get(base + path, timeout=5)
+        assert r.status_code == 200 and "index-abc123.js" in r.text
+        assert r.headers["cache-control"] == "no-cache", path
+
+    asset = httpx.get(base + "/assets/index-abc123.js", timeout=5)
+    assert asset.status_code == 200
+    assert asset.headers["cache-control"] == "public, max-age=31536000, immutable"

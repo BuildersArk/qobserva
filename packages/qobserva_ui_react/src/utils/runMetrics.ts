@@ -1,3 +1,4 @@
+import { knownQueueMs, sampledShots } from './shots';
 /**
  * Calculate metrics from run event data
  */
@@ -33,9 +34,10 @@ export function calculateRunMetrics(event: any, analysis: any): Partial<RunMetri
   const metrics: Partial<RunMetrics> = {};
   
   const counts = event.artifacts?.counts?.histogram || {};
-  const shots = event.execution?.shots || 0;
+  const shots = sampledShots(event.execution);
   const runtimeMs = event.execution?.runtime_ms || 0;
-  const queueMs = event.execution?.queue_ms || 0;
+  const reportedQueueMs = knownQueueMs(event);
+  const queueMs = reportedQueueMs || 0;
   const numQubits = event.program?.circuit_metrics?.num_qubits;
   
   if (!counts || shots === 0) {
@@ -62,17 +64,20 @@ export function calculateRunMetrics(event: any, analysis: any): Partial<RunMetri
     metrics.top10Probability = top10;
   }
   
-  // 2. Effective support size (95% probability mass)
-  let cumulativeProb = 0;
-  let effectiveSupportSize = 0;
-  for (const p of probabilities) {
-    cumulativeProb += p.probability;
-    effectiveSupportSize++;
-    if (cumulativeProb >= 0.95) {
-      break;
+  // 2. Effective support size (95% probability mass). Sampling metrics (2, 4, 5) need counts:
+  // runs without a histogram (energies, expectation values, sweeps) would otherwise show zeros.
+  if (probabilities.length > 0) {
+    let cumulativeProb = 0;
+    let effectiveSupportSize = 0;
+    for (const p of probabilities) {
+      cumulativeProb += p.probability;
+      effectiveSupportSize++;
+      if (cumulativeProb >= 0.95) {
+        break;
+      }
     }
+    metrics.effectiveSupportSize = effectiveSupportSize;
   }
-  metrics.effectiveSupportSize = effectiveSupportSize;
   
   // 3. Entropy vs ideal entropy
   const entropy = analysis.metrics?.['qc.quality.shannon_entropy_bits'];
@@ -86,31 +91,34 @@ export function calculateRunMetrics(event: any, analysis: any): Partial<RunMetri
     }
   }
   
-  // 4. Unique states vs shots
-  const uniqueStates = Object.keys(counts).length;
-  metrics.uniqueStates = uniqueStates;
-  metrics.uniqueStatesRatio = shots > 0 ? uniqueStates / shots : 0;
-  
-  // 5. Collision rate
-  // Collision = shots that landed in states that were already seen
-  // We can approximate this as: (shots - uniqueStates) / shots
-  // But more accurately: sum of (count - 1) for all states with count > 1
-  let collisions = 0;
-  for (const count of Object.values(counts)) {
-    const c = parseInt(String(count), 10);
-    if (c > 1) {
-      collisions += c - 1;
+  if (probabilities.length > 0) {
+    // 4. Unique states vs shots
+    const uniqueStates = Object.keys(counts).length;
+    metrics.uniqueStates = uniqueStates;
+    metrics.uniqueStatesRatio = shots > 0 ? uniqueStates / shots : 0;
+
+    // 5. Collision rate
+    // Collision = shots that landed in states that were already seen
+    // We can approximate this as: (shots - uniqueStates) / shots
+    // But more accurately: sum of (count - 1) for all states with count > 1
+    let collisions = 0;
+    for (const count of Object.values(counts)) {
+      const c = parseInt(String(count), 10);
+      if (c > 1) {
+        collisions += c - 1;
+      }
     }
+    metrics.collisionRate = shots > 0 ? collisions / shots : 0;
   }
-  metrics.collisionRate = shots > 0 ? collisions / shots : 0;
   
   // 6. Runtime per shot
   if (runtimeMs > 0 && shots > 0) {
     metrics.runtimePerShot = runtimeMs / shots;
   }
   
-  // 7. Runtime classification (heuristic)
-  if (runtimeMs > 0) {
+  // 7. Runtime classification (heuristic); it needs the queue time, so runs whose provider did not
+  // report one stay "unknown" instead of being judged against an assumed 0 ms queue.
+  if (runtimeMs > 0 && reportedQueueMs !== undefined) {
     const totalTime = runtimeMs + queueMs;
     if (totalTime > 0) {
       const queueRatio = queueMs / totalTime;

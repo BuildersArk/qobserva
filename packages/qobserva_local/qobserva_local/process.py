@@ -137,7 +137,18 @@ def _start_static_server(ui_dist_path: Path, cfg) -> int:
         def log_message(self, format, *args):
             # Suppress default logging
             pass
-        
+
+        def end_headers(self):
+            # index.html names the current build's JS/CSS files. Without Cache-Control the browser
+            # may reuse an old index.html for hours after an upgrade and keep loading the old
+            # dashboard. Files under /assets/ carry a content hash in their name, so they never change.
+            if not self.path.startswith('/api/'):
+                if self.path.startswith('/assets/'):
+                    self.send_header('Cache-Control', 'public, max-age=31536000, immutable')
+                else:
+                    self.send_header('Cache-Control', 'no-cache')
+            super().end_headers()
+
         def do_GET(self):
             # Proxy API requests to collector
             if self.path.startswith('/api/'):

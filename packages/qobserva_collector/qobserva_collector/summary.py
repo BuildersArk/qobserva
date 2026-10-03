@@ -42,7 +42,14 @@ def run_summary(event: Dict[str, Any], analysis: Dict[str, Any]) -> Dict[str, An
     params = program.get("benchmark_params") if isinstance(program, dict) else None
     metrics = (analysis or {}).get("metrics") or {}
 
+    provider_job = execution.get("provider_job") if isinstance(execution, dict) else None
+    artifacts = event.get("artifacts") or {}
+    pending = artifacts.get("pending_job") if isinstance(artifacts, dict) else None
+    job_id = next((j.get("job_id") for j in (provider_job, pending) if isinstance(j, dict) and j.get("job_id")), None)
+
     return {
+        # The provider's own job/task id (IBM job id, Braket task, D-Wave problem), for correlating runs
+        "job_id": _str_or_none(job_id),
         "sdk": (_str_or_none(sdk.get("name")) if isinstance(sdk, dict) else None)
                or (_str_or_none(tags.get("sdk")) if isinstance(tags, dict) else None),
         "runtime_ms": execution.get("runtime_ms") if isinstance(execution, dict) else None,
