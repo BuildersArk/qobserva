@@ -5,3 +5,6 @@ __pycache__/
 .venv*/
 venv*/
 node_modules/
+
+# Dashboard build output; the shipped bundle is packages/qobserva_local/qobserva_local/ui_dist
+packages/qobserva_ui_react/dist/
