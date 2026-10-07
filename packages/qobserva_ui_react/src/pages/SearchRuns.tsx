@@ -1,16 +1,21 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Search, ArrowRight } from 'lucide-react';
 import { apiService } from '../services/api';
 import CopyableRunId from '../components/CopyableRunId';
 import { sdkLabel } from '../utils/sdk';
+import { matchesRunSearch } from '../utils/runSearch';
+import Pagination from '../components/Pagination';
 import { format } from 'date-fns';
 import logoImage from '../assets/images/qoblogo.png';
 import { EXACT_TOOLTIP, shotsLabel } from '../utils/shots';
 
 export default function SearchRuns() {
   const [searchTerm, setSearchTerm] = useState('');
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 100;
+  useEffect(() => setPage(0), [searchTerm]);
   const navigate = useNavigate();
 
   const { data: runs = [], isLoading } = useQuery({
@@ -19,19 +24,7 @@ export default function SearchRuns() {
     staleTime: 5000,
   });
 
-  const filteredRuns = runs.filter(run => {
-    if (!searchTerm.trim()) return false;
-    const term = searchTerm.toLowerCase();
-    return (
-      run.run_id.toLowerCase().includes(term) ||
-      run.project.toLowerCase().includes(term) ||
-      run.provider.toLowerCase().includes(term) ||
-      run.backend_name.toLowerCase().includes(term) ||
-      run.status.toLowerCase().includes(term) ||
-      sdkLabel(run).toLowerCase().includes(term) ||
-      (run.job_id || '').toLowerCase().includes(term)
-    );
-  });
+  const filteredRuns = searchTerm.trim() ? runs.filter(run => matchesRunSearch(run, searchTerm)) : [];
 
   const handleRunClick = (runId: string) => {
     navigate(`/runs/${runId}`);
@@ -110,7 +103,7 @@ export default function SearchRuns() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredRuns.slice(0, 100).map((run) => (
+                    {filteredRuns.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map((run) => (
                       <tr
                         key={run.run_id}
                         className="border-b border-dark-border hover:bg-primary/10 hover:border-primary/30 transition-all duration-150"
@@ -155,11 +148,7 @@ export default function SearchRuns() {
                   </tbody>
                 </table>
               </div>
-              {filteredRuns.length > 100 && (
-                <p className="text-sm text-dark-text-muted mt-4 text-center">
-                  Showing first 100 results. Refine your search to see more.
-                </p>
-              )}
+              <Pagination page={page} pageSize={PAGE_SIZE} total={filteredRuns.length} onPageChange={setPage} />
             </div>
           )}
         </div>

@@ -553,35 +553,6 @@ export default function RunDetails() {
         </div>
       )}
 
-      {/* Artifacts Debug (for D-Wave/optimization) */}
-      {event.artifacts?.energies && (
-        <div className="card border-l-4 border-primary">
-          <h3 className="text-lg font-semibold mb-2 text-white">Energy Artifacts (Debug)</h3>
-          <div className="text-sm">
-            <div className="mb-2">
-              <span className="text-dark-text-muted">Energy Value:</span>
-              <span className="text-dark-text font-mono ml-2">
-                {event.artifacts.energies?.value !== null && event.artifacts.energies?.value !== undefined
-                  ? String(event.artifacts.energies.value)
-                  : 'null/undefined'}
-              </span>
-            </div>
-            <div className="mb-2">
-              <span className="text-dark-text-muted">Energy Std Error:</span>
-              <span className="text-dark-text font-mono ml-2">
-                {event.artifacts.energies?.stderr !== null && event.artifacts.energies?.stderr !== undefined
-                  ? String(event.artifacts.energies.stderr)
-                  : 'null/undefined'}
-              </span>
-            </div>
-            <div className="text-xs text-dark-text-muted mt-2">
-              If energy value is null/undefined, the adapter didn't extract it. 
-              If it has a value but metrics don't show it, the analysis needs to be re-run.
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Raw Event Data */}
       <div className="card">
         <button

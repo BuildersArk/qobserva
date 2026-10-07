@@ -1,9 +1,11 @@
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Download } from 'lucide-react';
 import { Run } from '../services/api';
 import { format } from 'date-fns';
 import { exportRunsToCSV } from '../utils/export';
 import CopyableRunId from './CopyableRunId';
+import Pagination from './Pagination';
 import { sdkLabel } from '../utils/sdk';
 import { EXACT_TOOLTIP, shotsLabel } from '../utils/shots';
 
@@ -14,8 +16,15 @@ interface Props {
   showDownloadButton?: boolean; // Show download button inline with heading
 }
 
+const PAGE_SIZE = 50;
+
 export default function RunsTable({ runs, highlightShots = false, title, showDownloadButton = false }: Props) {
   const navigate = useNavigate();
+  const [page, setPage] = useState(0);
+
+  // Back to the first page when the list itself changes (filters, search, status slice), not on every re-render.
+  const listKey = `${runs.length}:${runs[0]?.run_id ?? ''}:${runs[runs.length - 1]?.run_id ?? ''}`;
+  useEffect(() => setPage(0), [listKey]);
 
   const handleRowClick = (runId: string) => {
     navigate(`/runs/${runId}`);
@@ -60,7 +69,7 @@ export default function RunsTable({ runs, highlightShots = false, title, showDow
           </tr>
         </thead>
         <tbody>
-          {runs.slice(0, 50).map((run) => (
+          {runs.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map((run) => (
             <tr
               key={run.run_id}
               onClick={() => handleRowClick(run.run_id)}
@@ -100,6 +109,7 @@ export default function RunsTable({ runs, highlightShots = false, title, showDow
         </tbody>
       </table>
       </div>
+      <Pagination page={page} pageSize={PAGE_SIZE} total={runs.length} onPageChange={setPage} />
     </div>
   );
 }

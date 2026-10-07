@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.9 (qobserva 0.1.9 · qobserva-local 0.1.6; qobserva-agent 0.1.3 and qobserva-collector 0.1.6 unchanged)
+
+### Dashboard: every run is reachable
+- **Run tables page through all runs.** Recent Runs (Home), the filtered run lists and Algorithm Analytics showed only the first 50 rows with no way to see the rest, so older runs (e.g. a provider's runs from a few days earlier) disappeared from the list. They now show 50 per page with Previous / Next and "Showing 51–92 of 92 runs".
+- **Search box in Recent Runs.** Filters the runs on the page by run ID, job ID, project, SDK, provider, backend or status (the same fields as Search Runs), together with the project/provider/status/time filters at the top.
+- **Search Runs pages through all matches** instead of stopping at the first 100.
+- **Run Details:** removed the leftover "Energy Artifacts (Debug)" card. The energy and its standard error are shown in Optimization Results.
+
 ## 0.1.8 (qobserva 0.1.8 · qobserva-agent 0.1.3 · qobserva-collector 0.1.6 · qobserva-local 0.1.5)
 
 ### Behavior change: the circuit is recorded by default
