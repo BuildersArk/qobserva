@@ -1,11 +1,13 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import { Search } from 'lucide-react';
 import { apiService } from '../services/api';
 import MetricCard from '../components/MetricCard';
 import StatusDistribution from '../components/charts/StatusDistribution';
 import RunsTable, { RunsTableDownloadButton } from '../components/RunsTable';
 import SuccessTrend from '../components/charts/SuccessTrend';
+import { matchesRunSearch } from '../utils/runSearch';
 
 interface Props {
   filters?: {
@@ -23,6 +25,7 @@ export default function Home({ filters = {} }: Props) {
   
   // All hooks must be called before any early returns
   const [filteredStatus, setFilteredStatus] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
   
   // Create a stable query key from filters
   const queryKey = useMemo(() => {
@@ -53,10 +56,10 @@ export default function Home({ filters = {} }: Props) {
   const avgShots = totalRuns > 0 ? Math.round(totalShots / totalRuns) : 0;
   const uniqueBackends = new Set(runs.map(r => r.backend_name)).size;
 
-  // Filter runs by status for pie chart click
-  const displayedRuns = filteredStatus 
-    ? runs.filter(r => r.status === filteredStatus)
-    : runs;
+  // Filter runs by status for pie chart click, then by the Recent Runs search box
+  const displayedRuns = runs.filter(
+    r => (!filteredStatus || r.status === filteredStatus) && matchesRunSearch(r, searchTerm)
+  );
 
   // Helper to build filter query string
   const buildFilterQuery = (type: string) => {
@@ -139,6 +142,19 @@ export default function Home({ filters = {} }: Props) {
           </h3>
           <RunsTableDownloadButton runs={displayedRuns} />
         </div>
+        <div className="relative mb-4">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-dark-text-muted" size={16} />
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search these runs by run ID, job ID, project, SDK, provider, backend, or status..."
+            className="w-full bg-dark-bg border border-dark-border rounded-lg pl-10 pr-4 py-2 text-sm text-dark-text focus:outline-none focus:border-primary/50"
+          />
+        </div>
+        {searchTerm.trim() && displayedRuns.length === 0 && (
+          <p className="text-sm text-dark-text-muted mb-4">No runs match "{searchTerm.trim()}".</p>
+        )}
         <RunsTable runs={displayedRuns} />
       </div>
     </div>
