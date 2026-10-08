@@ -6,7 +6,9 @@ Think: **Datadog / Prometheus - but for quantum computing SDKs.**
 
 ## Demo
 
-![QObserva dashboard demo](docs/video/demo.gif)
+![QObserva dashboard showing a real Qiskit run on IBM ibm_kingston](docs/video/demo.gif)
+
+*A real Qiskit run on IBM's ibm_kingston quantum computer, recorded with `@observe_run`.*
 
 
 
