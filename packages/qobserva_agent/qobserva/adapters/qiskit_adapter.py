@@ -281,7 +281,11 @@ def provider_job_info(job: Any, obj: Any) -> Optional[Dict[str, Any]]:
         pass
     try:
         inputs = job.inputs or {}
-        if inputs.get("pubs") is not None:
+        if not isinstance(inputs, dict):
+            # Local executor jobs (runtime 0.51+; SamplerV2 itself from 0.52): inputs is the QuantumProgram.
+            if isinstance(getattr(inputs, "items", None), (list, tuple)):
+                info["items"] = len(inputs.items)
+        elif inputs.get("pubs") is not None:
             info["items"] = len(inputs["pubs"])
         elif inputs.get("quantum_program") is not None:
             info["items"] = len(inputs["quantum_program"].items)
