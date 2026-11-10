@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.11 (qobserva 0.1.11 · qobserva-agent 0.1.5; qobserva-collector 0.1.6 and qobserva-local 0.1.6 unchanged)
+
+Follow-up for **qiskit-ibm-runtime 0.52.0** (released 2026-11-10). In 0.52, `qiskit_ibm_runtime.SamplerV2` and
+`Sampler` are the executor Sampler, so local-mode jobs run the `executor` program, and `job.inputs` is the
+`QuantumProgram` itself. 0.1.10 already records these runs correctly: counts, shots, backend, job ID and (new in
+0.1.10) circuit metrics.
+- **Job details: the item count is recorded** for jobs whose `job.inputs` is a `QuantumProgram`. That covers local
+  executor jobs, and the default `SamplerV2` from runtime 0.52, which recorded it before 0.52.
+- Tests: the Runtime job test accepts the program name the job reports (`sampler` before 0.52, `executor` from 0.52).
+
 ## 0.1.10 (qobserva 0.1.10 · qobserva-agent 0.1.4; qobserva-collector 0.1.6 and qobserva-local 0.1.6 unchanged)
 
 Agent-only release, with no dashboard changes. Each fix was reproduced on the real SDK first and now has a real-SDK

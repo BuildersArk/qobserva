@@ -53,7 +53,9 @@ def test_runtime_job_id_is_recorded_and_listed(record):
 
     pj = ev["execution"]["provider_job"]
     assert pj["job_id"] == jobs[0].job_id()
-    assert pj["provider"] == "ibm" and pj["program"] == "sampler" and pj["items"] == 1 and pj["mode"] == "job"
+    # qiskit-ibm-runtime 0.52 made SamplerV2 the executor Sampler: its jobs run the "executor" program.
+    assert pj["program"] == jobs[0].primitive_id and pj["program"] in ("sampler", "executor")
+    assert pj["provider"] == "ibm" and pj["items"] == 1 and pj["mode"] == "job"
     assert row["job_id"] == jobs[0].job_id()  # in the runs list, for the Job ID column and search
 
 def test_local_primitive_job_id_is_recorded(record):
