@@ -169,6 +169,11 @@ def circuit_from_job(job: Any) -> Any:
         return job.program().get_circuit()
     inputs = getattr(job, "inputs", None)
     if not isinstance(inputs, dict):
+        # Runtime 0.51+ executor jobs (executor Sampler/Estimator): job.inputs is the QuantumProgram
+        # itself; its first item's circuit is the circuit as executed (twirling/basis changes included).
+        items = getattr(inputs, "items", None)
+        if isinstance(items, (list, tuple)) and items:
+            return getattr(items[0], "circuit", None)
         return None
     pubs = inputs.get("pubs") or []
     if pubs:

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import itertools
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from .base import Adapter, AdapterContext
-from .common import build_artifacts, expectation
+from .common import build_artifacts, expectation, to_float
 from .version_utils import get_sdk_version
 
 
@@ -400,22 +400,40 @@ def _backend_from_result(obj: Any) -> Optional[Dict[str, str]]:
     return None
 
 
-def _pub_counts(data: Any) -> Optional[Dict[str, int]]:
-    """Counts from a SamplerV2 pub's DataBin: the 'meas' register, then 'c', then any other register."""
-    meas = getattr(data, "meas", None)
-    if meas is not None and hasattr(meas, "get_counts"):
-        return meas.get_counts()
-    if meas is None:
-        c = getattr(data, "c", None)
-        if c is not None and hasattr(c, "get_counts"):
-            return c.get_counts()
-    if hasattr(data, "keys"):
-        # Custom classical register names (e.g. ClassicalRegister(2, "cr"))
-        for field_name in data.keys():
-            reg = getattr(data, field_name, None)
-            if reg is not None and hasattr(reg, "get_counts"):
-                return reg.get_counts()
-    return None
+def _pub_registers(data: Any) -> List[Tuple[str, Any]]:
+    """Every classical register (BitArray) in a SamplerV2 pub's DataBin, in circuit order."""
+    names = list(data.keys()) if hasattr(data, "keys") else ["meas", "c"]
+    regs = []
+    for name in names:
+        reg = getattr(data, name, None)
+        if reg is not None and hasattr(reg, "get_counts"):
+            regs.append((str(name), reg))
+    return regs
+
+
+def _pub_counts(pub_result: Any, data: Any) -> Tuple[Optional[Dict[str, int]], Dict[str, Dict[str, int]]]:
+    """(counts, per-register counts) for a SamplerV2 pub.
+
+    One register: its counts, and no per-register entries. Several registers: Qiskit's own joined
+    counts (``join_data().get_counts()``, later registers on the left, as Qiskit prints them) plus
+    each register's counts, so no register is silently dropped.
+    """
+    regs = _pub_registers(data)
+    if not regs:
+        return None, {}
+    if len(regs) == 1:
+        return regs[0][1].get_counts(), {}
+    per_register = {name: reg.get_counts() for name, reg in regs}
+    joined = None
+    if hasattr(pub_result, "join_data"):
+        try:
+            joined = pub_result.join_data([name for name, _ in regs]).get_counts()
+        except Exception:
+            joined = None
+    if joined is None:  # no join available: keep the old choice ('meas', then 'c', then the first)
+        by_name = dict(per_register)
+        joined = by_name.get("meas") or by_name.get("c") or per_register[regs[0][0]]
+    return joined, per_register
 
 
 def _pub_expectations(index: int, data: Any) -> List[Optional[Dict[str, Any]]]:
@@ -424,14 +442,26 @@ def _pub_expectations(index: int, data: Any) -> List[Optional[Dict[str, Any]]]:
     if evs is None:
         return []
     stds = getattr(data, "stds", None)
+    # Runtime's executor Estimator also reports the standard error over its twirling ensemble.
+    ensemble = getattr(data, "ensemble_standard_error", None) if hasattr(data, "keys") and \
+        "ensemble_standard_error" in data.keys() else None
     shape = tuple(getattr(evs, "shape", ()) or ())
+
+    def entry(label: str, value: Any, std: Any, ens: Any) -> Optional[Dict[str, Any]]:
+        e = expectation(label, value, std)
+        ens_value = to_float(ens)
+        if e is not None and ens_value is not None:
+            e["ensemble_stderr"] = ens_value
+        return e
+
     if not shape:
-        return [expectation(f"pub{index}", evs, stds)]
+        return [entry(f"pub{index}", evs, stds, ensemble)]
     out: List[Optional[Dict[str, Any]]] = []
     for idx in itertools.product(*(range(n) for n in shape)):
         label = f"pub{index}[{','.join(map(str, idx))}]"
         std = stds[idx] if stds is not None and getattr(stds, "shape", None) == shape else None
-        out.append(expectation(label, evs[idx], std))
+        ens = ensemble[idx] if ensemble is not None and getattr(ensemble, "shape", None) == shape else None
+        out.append(entry(label, evs[idx], std, ens))
     return out
 
 
@@ -439,17 +469,21 @@ def _primitive_result(obj: Any) -> Dict[str, Any]:
     """Counts (SamplerV2) and expectation values (EstimatorV2) from every pub of a PrimitiveResult."""
     pub_counts: List[Dict[str, int]] = []
     pub_shots: List[int] = []
+    pub_registers: List[Dict[str, Dict[str, int]]] = []
     expectations: List[Optional[Dict[str, Any]]] = []
     estimator_shots = 0
     exact_pubs = 0
+    precisions: List[float] = []
     for i, pub_result in enumerate(obj):
         data = getattr(pub_result, "data", None)
         metadata = getattr(pub_result, "metadata", None)
         if data is None:
             continue
-        counts = _pub_counts(data)
+        counts, registers = _pub_counts(pub_result, data)
         if isinstance(counts, dict):
             pub_counts.append({str(k): int(v) for k, v in counts.items()})
+            pub_registers.append({name: {str(k): int(v) for k, v in reg.items()}
+                                  for name, reg in registers.items()})
             shots = metadata.get("shots") if isinstance(metadata, dict) else None
             pub_shots.append(int(shots) if isinstance(shots, int) else sum(pub_counts[-1].values()))
         pub_exps = _pub_expectations(i, data)
@@ -458,9 +492,24 @@ def _primitive_result(obj: Any) -> Dict[str, Any]:
         if (pub_exps and isinstance(metadata, dict) and "shots" not in metadata
                 and metadata.get("target_precision") == 0):
             exact_pubs += 1  # StatevectorEstimator / Aer EstimatorV2 at precision 0: computed exactly
+        if pub_exps and isinstance(metadata, dict):
+            p = to_float(metadata.get("target_precision"))
+            if p:
+                precisions.append(p)
         expectations.extend(pub_exps)
-    return {"pub_counts": pub_counts, "pub_shots": pub_shots, "expectations": expectations,
+    # Runtime's executor Estimator reports shots and target precision for the whole job in
+    # result.metadata, not per pub (each pub's metadata["executor"]["shots"] is one item's share).
+    result_meta = getattr(obj, "metadata", None)
+    if expectations and isinstance(result_meta, dict):
+        if isinstance(result_meta.get("shots"), int) and not isinstance(result_meta["shots"], bool):
+            estimator_shots = max(estimator_shots, result_meta["shots"])
+        p = to_float(result_meta.get("target_precision"))
+        if p:
+            precisions.append(p)
+    return {"pub_counts": pub_counts, "pub_shots": pub_shots, "pub_registers": pub_registers,
+            "expectations": expectations,
             "estimator_shots": estimator_shots,
+            "target_precision": min(precisions) if precisions else None,
             "exact": bool(exact_pubs) and not pub_counts and exact_pubs == len(obj)}
 
 
@@ -488,6 +537,7 @@ class QiskitAdapter(Adapter):
         provider = "unknown"
         expectations: List[Optional[Dict[str, Any]]] = []
         batches: List[Dict[str, Any]] = []
+        target_precision: Optional[float] = None
 
         # Qiskit 2.x PrimitiveResult (SamplerV2 counts, EstimatorV2 expectation values)
         if hasattr(obj, "__class__") and obj.__class__.__name__ == "PrimitiveResult":
@@ -498,12 +548,20 @@ class QiskitAdapter(Adapter):
                     # each pub is also kept as a batch entry instead of being dropped.
                     counts = prim["pub_counts"][0]
                     shots = prim["pub_shots"][0]
-                    if len(prim["pub_counts"]) > 1:
-                        batches = [{"label": f"pub{i}", "shots": s, "histogram": h}
-                                   for i, (h, s) in enumerate(zip(prim["pub_counts"], prim["pub_shots"]))]
+                    many_pubs = len(prim["pub_counts"]) > 1
+                    for i, (h, s, regs) in enumerate(zip(prim["pub_counts"], prim["pub_shots"],
+                                                         prim["pub_registers"])):
+                        if many_pubs:
+                            batches.append({"label": f"pub{i}", "shots": s, "histogram": h})
+                        # A pub that measures into several registers: the histogram above is the
+                        # joined counts; each register is also kept as its own entry.
+                        for name, reg_hist in regs.items():
+                            label = f"pub{i}:{name}" if many_pubs else name
+                            batches.append({"label": label, "shots": s, "histogram": reg_hist})
                 expectations = prim["expectations"]
                 if counts is None and prim["estimator_shots"]:
                     shots = prim["estimator_shots"]
+                target_precision = prim["target_precision"]
                 exact = prim["exact"]
             except Exception:
                 pass
@@ -582,6 +640,8 @@ class QiskitAdapter(Adapter):
             "shots": shots,
             "artifacts": build_artifacts(histogram=histogram, expectations=expectations, batches=batches),
         }
+        if target_precision is not None and not exact:
+            execution_extra["target_precision"] = target_precision
         if execution_extra:
             out["execution"] = execution_extra
         if exact:

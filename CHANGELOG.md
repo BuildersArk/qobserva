@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.1.10 (qobserva 0.1.10 · qobserva-agent 0.1.4; qobserva-collector 0.1.6 and qobserva-local 0.1.6 unchanged)
+
+Agent-only release, with no dashboard changes. Each fix was reproduced on the real SDK first and now has a real-SDK
+regression test. Checked on qiskit 2.6.1, qiskit-ibm-runtime 0.51.0, qiskit-aer 0.18.2 and pyQuil 4.23.0.
+
+### Fixes
+- **pyQuil 4.23: QVM runs were labeled `unknown`.** pyQuil 4.23 requires qcs-sdk 0.31, which returns
+  `QVMResultData` / `QPUResultData` directly, without the `is_qvm()` / `is_qpu()` methods. QVM runs are again
+  `local_sim / qvm`, and the older pyQuil releases still work.
+- **Qiskit: every classical register is kept.** A circuit that measured into several classical registers recorded
+  only the first one, so the others were lost without a warning. The run's histogram is now Qiskit's own joined
+  counts (`join_data().get_counts()`, with later registers on the left, as Qiskit prints them). Each register also
+  appears as its own row in Batch Results (`a`, `b`; or `pub0:a` with several PUBs). Runs with a single register
+  (the common case) record exactly as before.
+- **IBM Runtime executor Estimator: shots and precision.** `qiskit_ibm_runtime.executor_estimator.Estimator` runs
+  were recorded with 1 shot, because the executor reports shots for the whole job in `result.metadata`, not per
+  PUB. The real shot count is now recorded, together with the requested precision (`execution.target_precision`,
+  which is also recorded for other shot-based Estimators that report it).
+- **IBM Runtime executor jobs: circuit metrics.** For executor Sampler and Estimator jobs, `job.inputs` is now a
+  `QuantumProgram`, so no circuit metrics were recorded. Depth, 2-qubit gate count and width are now read from the
+  circuit as executed. Previously these runs needed `circuit=`.
+- **Executor Estimator ensemble standard error.** The new per-value `ensemble_standard_error` is recorded as
+  `ensemble_stderr` next to `stderr` in each expectation entry. The field is optional, so older collectors accept it.
+- Tests: the hung-collector timing check allows 3 s instead of 1 s on slow CI runners.
+
 ## 0.1.9 (qobserva 0.1.9 · qobserva-local 0.1.6; qobserva-agent 0.1.3 and qobserva-collector 0.1.6 unchanged)
 
 ### Dashboard: every run is reachable
