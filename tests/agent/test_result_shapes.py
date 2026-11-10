@@ -167,7 +167,9 @@ def test_qiskit_runtime_local_mode_estimator(record):
         ev = record("qiskit", lambda: runtime.EstimatorV2(mode=fake).run([(isa, zz)]))
 
     assert ev["artifacts"]["result_type"] == "expectations"
-    assert 0.8 < _values(ev)[0] <= 1.0  # noisy fake device: close to, not exactly, 1
+    # Noisy fake device: close to 1. Runtime's default resilience level 1 (measurement mitigation)
+    # can push a mitigated value slightly past 1 (1.001 seen on 2026-11-10), so allow a small overshoot.
+    assert 0.8 < _values(ev)[0] < 1.1
     assert ev["artifacts"]["expectations"][0]["stderr"] > 0
     assert ev["execution"]["shots"] == 4096
     assert ev["backend"] == {"provider": "local_sim", "name": "fake_manila"}

@@ -23,7 +23,7 @@ regression test. Checked on qiskit 2.6.1, qiskit-ibm-runtime 0.51.0, qiskit-aer 
   circuit as executed. Previously these runs needed `circuit=`.
 - **Executor Estimator ensemble standard error.** The new per-value `ensemble_standard_error` is recorded as
   `ensemble_stderr` next to `stderr` in each expectation entry. The field is optional, so older collectors accept it.
-- Tests: the hung-collector timing check allows 3 s instead of 1 s on slow CI runners.
+- Tests: the hung-collector timing check allows 3 s instead of 1 s on slow CI runners. The IBM Runtime local-mode Estimator test allows a mitigated value slightly above 1, which measurement mitigation can produce.
 
 ## 0.1.9 (qobserva 0.1.9 · qobserva-local 0.1.6; qobserva-agent 0.1.3 and qobserva-collector 0.1.6 unchanged)
 
