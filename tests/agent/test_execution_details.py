@@ -136,3 +136,70 @@ def test_real_ibm_job_metrics_are_read():
                                "finished": "2026-09-28T16:45:16.834940Z", "source": "ibm_runtime_job"}
     assert out["queue_ms"] == 44069  # created -> running
     assert resource_usage == {"qpu_time_s": 2.0, "circuit_execution_time_s": 0.261039}
+
+# --- 0.1.10: Runtime executor Estimator (fixes 2-4) -------------------------------------------
+
+def _executor_estimator_job(precision):
+    pytest.importorskip("qiskit_aer")
+    executor = pytest.importorskip("qiskit_ibm_runtime.executor_estimator")
+    from qiskit import QuantumCircuit, transpile
+    from qiskit.quantum_info import SparsePauliOp
+    from qiskit_ibm_runtime.fake_provider import FakeManilaV2
+    fake = FakeManilaV2()
+    qc = QuantumCircuit(2)
+    qc.h(0)
+    qc.cx(0, 1)
+    isa = transpile(qc, fake, seed_transpiler=3)
+    obs = [SparsePauliOp("ZZ").apply_layout(isa.layout), SparsePauliOp("XX").apply_layout(isa.layout)]
+    return executor.Estimator(mode=fake).run([(isa, obs)], precision=precision)
+
+def test_executor_estimator_shots_precision_and_ensemble_error(record):
+    """Fixes 2 and 4: shots/target precision live in result.metadata; ensemble_standard_error per value."""
+    holder = {}
+
+    def run():
+        holder["job"] = _executor_estimator_job(0.05)
+        return holder["job"]
+
+    ev = record("qiskit", run)
+    result = holder["job"].result()
+
+    assert ev["execution"]["shots"] == result.metadata["shots"] > 1
+    assert ev["execution"]["target_precision"] == pytest.approx(0.05)
+    exps = ev["artifacts"]["expectations"]
+    data = result[0].data
+    assert [e["operator"] for e in exps] == ["pub0[0]", "pub0[1]"]
+    assert [e["value"] for e in exps] == pytest.approx(list(data.evs))
+    assert [e["stderr"] for e in exps] == pytest.approx(list(data.stds))
+    assert [e["ensemble_stderr"] for e in exps] == pytest.approx(list(data.ensemble_standard_error))
+
+def test_executor_jobs_record_circuit_metrics_from_quantum_program(record):
+    """Fix 3: job.inputs is a QuantumProgram; its first item's circuit is the one executed."""
+    holder = {}
+
+    def run():
+        holder["job"] = _executor_estimator_job(0.1)
+        return holder["job"]
+
+    ev = record("qiskit", run)
+    executed = holder["job"].inputs.items[0].circuit
+
+    cm = ev["program"]["circuit_metrics"]
+    assert cm["source"] == "job"
+    assert cm["two_qubit_gate_count_post"] == 1
+    assert cm["num_qubits"] >= 2
+    assert cm["depth_post"] <= executed.depth()
+
+def test_executor_sampler_records_circuit_metrics(record):
+    pytest.importorskip("qiskit_aer")
+    executor = pytest.importorskip("qiskit_ibm_runtime.executor_sampler")
+    from qiskit_ibm_runtime.fake_provider import FakeManilaV2
+    fake = FakeManilaV2()
+    isa = _isa_bell(fake)
+
+    ev = record("qiskit", lambda: executor.Sampler(mode=fake).run([isa], shots=64))
+
+    cm = ev["program"]["circuit_metrics"]
+    assert cm["source"] == "job"
+    assert cm["two_qubit_gate_count_post"] == 1
+    assert sum(ev["artifacts"]["counts"]["histogram"].values()) == ev["execution"]["shots"] == 64

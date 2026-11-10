@@ -52,6 +52,83 @@ def test_qiskit_statevector_estimator_expectations(record):
     assert all(e["stderr"] == pytest.approx(0.0) for e in art["expectations"])
     assert "counts" not in art
 
+def _two_register_circuit():
+    """Deterministic: register a (2 bits) reads '01', register b (1 bit) reads '1'."""
+    from qiskit import ClassicalRegister, QuantumCircuit, QuantumRegister
+    q, a, b = QuantumRegister(3), ClassicalRegister(2, "a"), ClassicalRegister(1, "b")
+    qc = QuantumCircuit(q, a, b)
+    qc.x(0)
+    qc.x(2)
+    qc.measure(0, a[0])
+    qc.measure(1, a[1])
+    qc.measure(2, b[0])
+    return qc
+
+@pytest.mark.parametrize("sampler", ["statevector", "aer"])
+def test_qiskit_sampler_keeps_every_classical_register(record, sampler):
+    """0.1.10 fix 1: a second classical register used to be dropped silently."""
+    pytest.importorskip("qiskit")
+    if sampler == "aer":
+        pytest.importorskip("qiskit_aer")
+        from qiskit_aer.primitives import SamplerV2 as Sampler
+    else:
+        from qiskit.primitives import StatevectorSampler as Sampler
+    qc = _two_register_circuit()
+
+    ev = record("qiskit", lambda: Sampler(seed=7).run([qc], shots=50).result())
+
+    art = ev["artifacts"]
+    assert art["counts"]["histogram"] == {"101": 50}  # Qiskit's joined form: b then a
+    assert ev["execution"]["shots"] == 50
+    assert [(b["label"], b["histogram"], b["shots"]) for b in art["batches"]] == [
+        ("a", {"01": 50}, 50), ("b", {"1": 50}, 50)]
+
+def test_qiskit_sampler_registers_with_several_pubs(record):
+    pytest.importorskip("qiskit")
+    from qiskit import QuantumCircuit
+    from qiskit.primitives import StatevectorSampler
+    single = QuantumCircuit(1)
+    single.x(0)
+    single.measure_all()
+
+    ev = record("qiskit", lambda: StatevectorSampler(seed=7).run(
+        [_two_register_circuit(), single], shots=20).result())
+
+    batches = ev["artifacts"]["batches"]
+    assert [(b["label"], b["histogram"]) for b in batches] == [
+        ("pub0", {"101": 20}), ("pub0:a", {"01": 20}), ("pub0:b", {"1": 20}), ("pub1", {"1": 20})]
+    assert ev["artifacts"]["counts"]["histogram"] == {"101": 20}  # first pub, as before
+
+def test_qiskit_runtime_executor_sampler_keeps_every_register(record):
+    pytest.importorskip("qiskit_aer")
+    executor = pytest.importorskip("qiskit_ibm_runtime.executor_sampler")
+    from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
+    from qiskit_ibm_runtime.fake_provider import FakeManilaV2
+    fake = FakeManilaV2()
+    isa = generate_preset_pass_manager(optimization_level=1, backend=fake).run(_two_register_circuit())
+
+    ev = record("qiskit", lambda: executor.Sampler(mode=fake).run([isa], shots=200).result())
+
+    hist = ev["artifacts"]["counts"]["histogram"]
+    assert all(len(k) == 3 for k in hist) and sum(hist.values()) == 200  # noisy fake: a+b joined
+    batches = ev["artifacts"]["batches"]
+    assert [b["label"] for b in batches] == ["a", "b"]
+    assert all(len(k) == 2 for k in batches[0]["histogram"]) and all(len(k) == 1 for k in batches[1]["histogram"])
+    assert all(sum(b["histogram"].values()) == 200 for b in batches)
+
+def test_qiskit_single_register_sampler_has_no_register_batches(record):
+    pytest.importorskip("qiskit")
+    from qiskit import QuantumCircuit
+    from qiskit.primitives import StatevectorSampler
+    qc = QuantumCircuit(2)
+    qc.x(1)
+    qc.measure_all()
+
+    ev = record("qiskit", lambda: StatevectorSampler(seed=7).run([qc], shots=30).result())
+
+    assert ev["artifacts"]["counts"]["histogram"] == {"10": 30}
+    assert "batches" not in ev["artifacts"]
+
 def test_qiskit_aer_estimator_expectations_and_backend(record):
     pytest.importorskip("qiskit_aer")
     from qiskit_aer.primitives import EstimatorV2
@@ -90,7 +167,9 @@ def test_qiskit_runtime_local_mode_estimator(record):
         ev = record("qiskit", lambda: runtime.EstimatorV2(mode=fake).run([(isa, zz)]))
 
     assert ev["artifacts"]["result_type"] == "expectations"
-    assert 0.8 < _values(ev)[0] <= 1.0  # noisy fake device: close to, not exactly, 1
+    # Noisy fake device: close to 1. Runtime's default resilience level 1 (measurement mitigation)
+    # can push a mitigated value slightly past 1 (1.001 seen on 2026-11-10), so allow a small overshoot.
+    assert 0.8 < _values(ev)[0] < 1.1
     assert ev["artifacts"]["expectations"][0]["stderr"] > 0
     assert ev["execution"]["shots"] == 4096
     assert ev["backend"] == {"provider": "local_sim", "name": "fake_manila"}

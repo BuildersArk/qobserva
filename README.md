@@ -144,10 +144,10 @@ Return the SDK's result (or a local job/task) from the decorated function. QObse
 
 | Result | Examples | Shown in Run Details as |
 |---|---|---|
-| Counts | Qiskit `SamplerV2`, Braket `measurement_counts`, Cirq `run`, PennyLane `qml.counts` / `qml.sample`, pyQuil, D-Wave | Measurement Results and the sampling metrics |
-| Expectation values | Qiskit `EstimatorV2` (`evs`, `stds`), Braket `expectation` / `variance`, Cirq `simulate_expectation_values`, PennyLane `expval` | Expectation Values table |
+| Counts | Qiskit `SamplerV2` (all classical registers, joined as Qiskit does), Braket `measurement_counts`, Cirq `run`, PennyLane `qml.counts` / `qml.sample`, pyQuil, D-Wave | Measurement Results and the sampling metrics |
+| Expectation values | Qiskit `EstimatorV2` (`evs`, `stds`; IBM Runtime's executor Estimator also `ensemble_standard_error` and the target precision), Braket `expectation` / `variance`, Cirq `simulate_expectation_values`, PennyLane `expval` | Expectation Values table |
 | Probabilities | PennyLane `qml.probs`, Braket `probability` | Measurement Probabilities chart |
-| Batches | Cirq `run_sweep` / `run_batch`, PennyLane shot vectors, multi-PUB Sampler results | Batch Results table (one row per sweep point / group / PUB) |
+| Batches | Cirq `run_sweep` / `run_batch`, PennyLane shot vectors, multi-PUB Sampler results, Sampler circuits with several classical registers | Batch Results table (one row per sweep point / group / PUB / register) |
 | Energies and embedding | D-Wave SampleSets; `EmbeddingComposite(..., return_embedding=True)` adds chain lengths and chain breaks | Optimization Results, Embedding & Chain Breaks |
 
 Also recorded when the SDK provides them: the provider's job ID (searchable in the dashboard); circuit qubits, depth and gate counts, the circuit as OpenQASM/Quil and a text diagram; the IBM Quantum job timeline, queue time, billed QPU seconds, execution spans or chunk timing, and the requested and applied error-suppression/mitigation options; Braket task times; the estimated AWS cost of Braket tasks (from Braket's `Tracker`); and Google Quantum Engine / Quantum Virtual Machine job details (processor, program, status, calibration time). Results computed exactly, without sampling (a statevector Estimator, PennyLane analytic mode, Braket `shots=0`), show **Exact** instead of a shot count.

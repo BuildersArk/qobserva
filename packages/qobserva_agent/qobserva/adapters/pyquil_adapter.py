@@ -28,12 +28,20 @@ def _register_rows(result: Any, measurement_key: Optional[str]) -> Any:
 def _backend_from_result(result: Any) -> Optional[Dict[str, str]]:
     try:
         result_data = result.data.result_data
-        if result_data.is_qvm():
-            return {"provider": "local_sim", "name": "qvm"}
-        if result_data.is_qpu():
-            return {"provider": "rigetti", "name": "unknown"}
     except Exception:
-        pass
+        return None
+    # qcs-sdk < 0.31 wraps results in a ResultData with is_qvm()/is_qpu();
+    # qcs-sdk 0.31+ (pyQuil 4.23+) returns QVMResultData / QPUResultData directly.
+    kind = type(result_data).__name__
+    try:
+        is_qvm = result_data.is_qvm() if hasattr(result_data, "is_qvm") else kind == "QVMResultData"
+        is_qpu = result_data.is_qpu() if hasattr(result_data, "is_qpu") else kind == "QPUResultData"
+    except Exception:
+        return None
+    if is_qvm:
+        return {"provider": "local_sim", "name": "qvm"}
+    if is_qpu:
+        return {"provider": "rigetti", "name": "unknown"}
     return None
 
 

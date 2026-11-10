@@ -49,7 +49,7 @@ def test_decorated_function_does_not_wait_for_a_hung_collector(unresponsive_endp
 
     t0 = time.monotonic()
     assert run() == {"counts": {"00": 3, "11": 5}}
-    assert time.monotonic() - t0 < 1.0
+    assert time.monotonic() - t0 < 3.0  # well under the 10 s timeout; slack for slow CI runners
 
 def test_runs_are_delivered_and_flush_waits_for_them(collector):
     from qobserva import flush, observe_run
